@@ -1,0 +1,13 @@
+{
+  "name": "Handsfree Browser",
+  "version": "0.0.1",
+  "description": "A browser extension for using and developing the web handsfree 🖐👀🖐, powered by Handsfree.js",
+  "manifest_version": 2,
+
+  "options_page": "src/options/stream-capture.html",
+
+  "background": {
+    "scripts": ["src/background/handsfree.js"],
+    "persistent": false
+  }
+}
