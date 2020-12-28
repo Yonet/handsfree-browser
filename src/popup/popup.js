@@ -7,13 +7,13 @@ const $el = {
  * Start the webcam
  * - If the user hasn't approved permissions yet, then visit the options page first
  */
-$start.addEventListener('click', () => {
+$el.start.addEventListener('click', () => {
   chrome.storage.local.get(['hasCapturedStream'], (data) => {
     if (data.hasCapturedStream) {
       chrome.runtime.sendMessage({action: 'handsfreeStart'})
       setHandsfreeState(true)
     } else {
-      chrome.tabs.create({url: '/src/options/stream-capture.html'})
+      chrome.runtime.openOptionsPage()
     }
     window.close()
   })
@@ -22,7 +22,7 @@ $start.addEventListener('click', () => {
 /**
  * Stop the webcam
  */
-$stop.addEventListener('click', () => {
+$el.stop.addEventListener('click', () => {
   setHandsfreeState(false)
   chrome.runtime.sendMessage({action: 'stop'})
   window.close()
@@ -33,11 +33,11 @@ $stop.addEventListener('click', () => {
  */
 function setHandsfreeState(isStarted) {
   if (isStarted) {
-    $start.classList.add('hidden')
-    $stop.classList.remove('hidden')
+    $el.start.classList.add('hidden')
+    $el.stop.classList.remove('hidden')
   } else {
-    $start.classList.remove('hidden')
-    $stop.classList.add('hidden')
+    $el.start.classList.remove('hidden')
+    $el.stop.classList.add('hidden')
   }
 }
 chrome.storage.local.get(['isHandsfreeStarted'], function(data) {
