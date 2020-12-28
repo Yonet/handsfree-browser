@@ -11,6 +11,16 @@
     "persistent": false
   },
 
+  "browser_action": {
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "public/favicon.png",
+      "32": "public/favicon.png",
+      "48": "public/favicon.png",
+      "128": "public/favicon.png"
+    }
+  },
+    
   "icons": {
     "16": "public/favicon.png",
     "32": "public/favicon.png",
