@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "A browser extension for using and developing the web handsfree 🖐👀🖐, powered by Handsfree.js",
   "manifest_version": 2,
-  "permissions": ["storage", "tabs", "activeTab"],
+  "permissions": ["*://*/*", "storage", "tabs", "activeTab"],
   "web_accessible_resources": ["public/handsfree/*"],
 
   "options_page": "src/options/stream-capture.html",

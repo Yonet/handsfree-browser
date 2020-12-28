@@ -12,19 +12,28 @@ chrome.runtime.onInstalled.addListener(function() {
 /**
  * Handle Handsfree events
  */
-chrome.runtime.onMessage.addListener(function(message) {
+chrome.runtime.onMessage.addListener(function(message, sender, respond) {
   switch (message.action) {
     /**
      * Start Handsfree
      */
-    case 'handsfree-start':
+    case 'handsfreeStart':
       chrome.storage.local.set({isHandsfreeStarted: true}, function() {
-        chrome.tabs.query({}, function(tabs) {
+        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
           for (var i = 0; i < tabs.length; ++i) {
-            chrome.tabs.sendMessage(tabs[i].id, {action: 'handsfree-start'})
+            chrome.tabs.sendMessage(tabs[i].id, {action: 'handsfreeStart'})
           }
         })
       })
-    break
+      return
+
+    /**
+     * Load a dependency into the current tab
+     */
+    case 'handsfreeLoadDependency':
+      chrome.tabs.executeScript({file: message.file}, function () {
+        Promise.resolve('').then(respond)
+      })
+      return true
   }
 })

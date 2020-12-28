@@ -10,7 +10,7 @@ const $el = {
 $el.start.addEventListener('click', () => {
   chrome.storage.local.get(['hasCapturedStream'], (data) => {
     if (data.hasCapturedStream) {
-      chrome.runtime.sendMessage({action: 'handsfree-start'})
+      chrome.runtime.sendMessage({action: 'handsfreeStart'})
       setHandsfreeState(true)
     } else {
       chrome.runtime.openOptionsPage()
