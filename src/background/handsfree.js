@@ -54,6 +54,15 @@ chrome.runtime.onMessage.addListener(function(message, sender, respond) {
       return
 
     /**
+     * Stop Handsfree
+     */
+    case 'handsfreeStop':
+      chrome.storage.local.set({isHandsfreeStarted: false}, function() {
+        handsfree.stop()
+      })
+      return
+
+    /**
      * Load a dependency into the current tab
      */
     case 'handsfreeLoadDependency':

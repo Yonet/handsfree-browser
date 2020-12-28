@@ -8,5 +8,8 @@ chrome.runtime.onMessage.addListener(function(message) {
     case 'handsfreeData':
       console.log('data', message.data)
     break
+
+    case 'handsfreeStop':
+    break
   }
 })

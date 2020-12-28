@@ -24,7 +24,7 @@ $el.start.addEventListener('click', () => {
  */
 $el.stop.addEventListener('click', () => {
   setHandsfreeState(false)
-  chrome.runtime.sendMessage({action: 'stop'})
+  chrome.runtime.sendMessage({action: 'handsfreeStop'})
   window.close()
 })
 
@@ -33,11 +33,11 @@ $el.stop.addEventListener('click', () => {
  */
 function setHandsfreeState(isStarted) {
   if (isStarted) {
-    $el.start.classList.add('hidden')
-    $el.stop.classList.remove('hidden')
+    $el.start.classList.add('d-none')
+    $el.stop.classList.remove('d-none')
   } else {
-    $el.start.classList.remove('hidden')
-    $el.stop.classList.add('hidden')
+    $el.start.classList.remove('d-none')
+    $el.stop.classList.add('d-none')
   }
 }
 chrome.storage.local.get(['isHandsfreeStarted'], function(data) {
