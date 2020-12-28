@@ -27,7 +27,6 @@ requestAnimationFrame = newRequestAnimationFrame = function(cb) {
   }, 1000 / 30)
 }
 
-
 /**
  * Open the Options Page to prompt to capture the webcam feed
  */
@@ -50,6 +49,12 @@ chrome.runtime.onMessage.addListener(function(message, sender, respond) {
     case 'handsfreeStart':
       chrome.storage.local.set({isHandsfreeStarted: true}, function() {
         handsfree.start()
+        chrome.browserAction.setBadgeBackgroundColor({
+          color: '#f00'
+        })
+        chrome.browserAction.setBadgeText({
+          text: 'ON'
+        })
       })
       return
 
@@ -59,6 +64,9 @@ chrome.runtime.onMessage.addListener(function(message, sender, respond) {
     case 'handsfreeStop':
       chrome.storage.local.set({isHandsfreeStarted: false}, function() {
         handsfree.stop()
+        chrome.browserAction.setBadgeText({
+          text: ''
+        })
       })
       return
 
