@@ -1,0 +1,50 @@
+{
+  "name": "Handsfree Browser",
+  "version": "0.0.1",
+  "description": "A browser extension for using and developing the web handsfree 🖐👀🖐, powered by Handsfree.js",
+  "manifest_version": 2,
+  "permissions": ["*://*/*", "storage", "tabs", "activeTab"],
+  "web_accessible_resources": ["public/handsfree/*"],
+  "content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
+  
+  "options_page": "src/options/stream-capture.html",
+
+  "background": {
+    "scripts": [
+      "public/handsfree/handsfree.js",
+      "src/background/handsfree.js"
+    ],
+    "persistent": false
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "exclude_matches": ["*://localhost/*"],
+      "css": [
+        "public/handsfree/assets/handsfree.css"
+      ],
+      "js": [
+        "public/handsfree/handsfree.js",
+        "src/content/handsfree.js"
+      ]
+    }
+  ],
+
+  "browser_action": {
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "public/favicon.png",
+      "32": "public/favicon.png",
+      "48": "public/favicon.png",
+      "128": "public/favicon.png"
+    }
+  },
+    
+  "icons": {
+    "16": "public/favicon.png",
+    "32": "public/favicon.png",
+    "48": "public/favicon.png",
+    "128": "public/favicon.png"
+  }
+}
