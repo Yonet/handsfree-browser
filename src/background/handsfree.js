@@ -1,4 +1,34 @@
 /**
+ * Setup Handsfree.js and the message bus
+ */
+const handsfree = new Handsfree({
+  assetsPath: '/public/handsfree/assets',
+  weboji: true,
+  // hands: true
+})
+
+handsfree.use('contentScriptBus', {
+  onFrame (data) {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      for (var i = 0; i < tabs.length; ++i) {
+        chrome.tabs.sendMessage(tabs[i].id, {action: 'handsfreeData', data})
+      }
+    })
+  }
+})
+
+/**
+ * Override requestAnimationFrame, which doesn't work in background script
+ */
+_requestAnimationFrame = requestAnimationFrame
+requestAnimationFrame = newRequestAnimationFrame = function(cb) {
+  setTimeout(function() {
+    cb()
+  }, 1000 / 30)
+}
+
+
+/**
  * Open the Options Page to prompt to capture the webcam feed
  */
 chrome.runtime.onInstalled.addListener(function() {
@@ -19,11 +49,7 @@ chrome.runtime.onMessage.addListener(function(message, sender, respond) {
      */
     case 'handsfreeStart':
       chrome.storage.local.set({isHandsfreeStarted: true}, function() {
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-          for (var i = 0; i < tabs.length; ++i) {
-            chrome.tabs.sendMessage(tabs[i].id, {action: 'handsfreeStart'})
-          }
-        })
+        handsfree.start()
       })
       return
 

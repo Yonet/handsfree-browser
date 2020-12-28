@@ -9,7 +9,10 @@
   "options_page": "src/options/stream-capture.html",
 
   "background": {
-    "scripts": ["src/background/handsfree.js"],
+    "scripts": [
+      "public/handsfree/handsfree.js",
+      "src/background/handsfree.js"
+    ],
     "persistent": false
   },
 
