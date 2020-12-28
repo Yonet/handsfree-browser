@@ -4,7 +4,7 @@
 const handsfree = new Handsfree({
   assetsPath: '/public/handsfree/assets',
   weboji: true,
-  // hands: true
+  hands: true
 })
 
 handsfree.use('contentScriptBus', {
@@ -49,6 +49,7 @@ chrome.runtime.onMessage.addListener(function(message, sender, respond) {
     case 'handsfreeStart':
       chrome.storage.local.set({isHandsfreeStarted: true}, function() {
         handsfree.start()
+        handsfree.enablePlugins('browser')
         chrome.browserAction.setBadgeBackgroundColor({
           color: '#f00'
         })
