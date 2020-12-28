@@ -9,5 +9,12 @@
   "background": {
     "scripts": ["src/background/handsfree.js"],
     "persistent": false
+  },
+
+  "icons": {
+    "16": "public/favicon.png",
+    "32": "public/favicon.png",
+    "48": "public/favicon.png",
+    "128": "public/favicon.png"
   }
 }
