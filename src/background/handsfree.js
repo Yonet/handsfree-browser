@@ -2,7 +2,7 @@
  * Setup Handsfree.js and the message bus
  */
 const handsfree = new Handsfree({
-  assetsPath: '/public/handsfree/assets',
+  assetsPath: '/assets/js/handsfree/assets',
   weboji: true,
   hands: true
 })

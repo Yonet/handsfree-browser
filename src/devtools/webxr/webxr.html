@@ -1,0 +1,91 @@
+<html>
+  <head>
+    <!-- Panel -->
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <link href="/assets/css/webxr.css" rel="stylesheet">
+    
+    <!-- Handsfree -->
+    <link href="/assets/js/handsfree/assets/handsfree.css" rel="stylesheet">
+    <script src="/assets/js/handsfree/handsfree.js"></script>
+  </head>
+
+  <body>
+    <!-- Three Area -->
+    <div class="component main-component">
+      <div class="title-bar">
+        <select id="deviceSelect"></select>
+        <label id="stereoEffectLabel"><input id="stereoCheckbox" type="checkbox" checked>Stereo effect</label>
+        <span id="devicePropertiesExpandIcon" class="item-left icon">&#9660;</span>
+      </div>
+      <div id="renderComponent" class="component main-component"></div>
+      <div class="title-bar border-top">
+        <button id="resetPoseButton">Reset pose</button>
+        <button id="exitButton">Exit immersive</button>
+      </div>
+    </div>
+
+    <!-- Devices -->
+    <div id="devicePropertiesComponent" class="component device-properties-component">
+      <!-- Headset Panel -->
+      <div id="headsetComponent" class="component device-property-component">
+        <div class="title-bar"><span class="icon">&#9660;</span>Headset</div>
+        <div class="component device-property-content">
+          <div><span class="key">position:</span> <span class="value" id="headsetPosition"></span></div>
+          <div><span class="key">rotation:</span> <span class="value" id="headsetRotation"></span></div>
+
+          <!-- Handsfree -->
+          <div>
+            <button id="handsfree-start" class="handsfree-show-when-stopped handsfree-hide-when-loading">Start Handsfree</button>
+            <button id="handsfree-stop" class="handsfree-show-when-started" style="background: #f66; color: #fff">Stop Handsfree</button>
+          </div>
+          <div>
+            <button id="toggleHandsfreeWebcam" class="handsfree-show-when-started">Show/Hide webcam feed</button>
+          </div>
+          <div>
+            <div>
+              <label class="handsfree-show-when-started">Handsfree rotation multiplier</label>
+              <input class="handsfree-show-when-started" type="range" min="0" max="5" step=".25" value="1" id="handfree-head-rotation-multiplier">
+            </div>
+            <div>
+              <label class="handsfree-show-when-started">Handsfree translation multiplier</label>
+              <input class="handsfree-show-when-started" type="range" min="0" max="5" step=".25" value="1" id="handfree-head-translation-multiplier">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right controller panel -->
+      <div id="rightControllerComponent" class="component device-property-component">
+        <div class="title-bar"><span class="icon">&#9660;</span>Right controller</div>
+        <div class="component device-property-content">
+          <div><span class="key">position:</span> <span class="value" id="rightControllerPosition"></span></div>
+          <div><span class="key">rotation:</span> <span class="value" id="rightControllerRotation"></span></div>
+          <div><button class="trigger-button" id="rightSelectButton">select button</button></div>
+          <div><button class="trigger-button" id="rightSqueezeButton">squeeze button</button></div>
+        </div>
+      </div>
+
+      <!-- Left controller panel -->
+      <div id="leftControllerComponent" class="component device-property-component">
+        <div class="title-bar"><span class="icon">&#9660;</span>Left controller</div>
+        <div class="component device-property-content">
+          <div><span class="key">position:</span> <span class="value" id="leftControllerPosition"></span></div>
+          <div><span class="key">rotation:</span> <span class="value" id="leftControllerRotation"></span></div>
+          <div><button class="trigger-button" id="leftSelectButton">select button</button></div>
+          <div><button class="trigger-button" id="leftSqueezeButton">squeeze button</button></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/assets/js/three/three.js"></script>
+    <script src="/assets/js/three/GLTFLoader.js"></script>
+    <script src="/assets/js/three/OBJLoader.js"></script>
+    <script src="/assets/js/three/OrbitControls.js"></script>
+    <script src="/assets/js/three/TransformControls.js"></script>
+    
+    <script src="/assets/js/ConfigurationManager.js"></script>
+    
+    <script src="webxr.js"></script>
+    <script src="handsfree.js"></script>
+  </body>
+</html>
