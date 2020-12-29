@@ -22,19 +22,26 @@
     {
       "matches": ["*://*/*"],
       "exclude_matches": ["*://localhost/*"],
-      "css": [
-        "/assets/js/handsfree/assets/handsfree.css"
-      ],
       "js": [
-        "/assets/js/handsfree/handsfree.js",
-        "/src/content/handsfree.js",
-
         "/assets/js/polyfill/webxr-polyfill.js",
         "/assets/js/ConfigurationManager.js",
         "/src/content/webxr.js"
       ],
       "run_at": "document_start",
       "all_frames": true  
+    },
+    {
+      "matches": ["*://*/*"],
+      "exclude_matches": ["*://localhost/*"],
+      "css": [
+        "/assets/js/handsfree/assets/handsfree.css"
+      ],
+      "js": [
+        "/assets/js/handsfree/handsfree.js",
+        "/src/content/handsfree.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_end"
     }
   ],
 

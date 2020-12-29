@@ -10,7 +10,7 @@ ports = {
  */
 const handsfree = new Handsfree({
   assetsPath: '/assets/js/handsfree/assets',
-  weboji: true,
+  // weboji: true,
   hands: true
 })
 
@@ -22,7 +22,8 @@ handsfree.use('contentScriptBus', {
     // Send data to content
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       for (var i = 0; i < tabs.length; ++i) {
-        chrome.tabs.sendMessage(tabs[i].id, {action: 'handsfreeData', data})
+        console.log('background')
+        chrome.tabs.sendMessage(tabs[i].id, {action: 'handsfree-data', data})
       }
     })
 
