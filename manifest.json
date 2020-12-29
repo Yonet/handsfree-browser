@@ -4,7 +4,6 @@
   "description": "A browser extension for using and developing the web handsfree 🖐👀🖐, powered by Handsfree.js",
   "manifest_version": 2,
   "permissions": ["*://*/*", "storage", "tabs", "activeTab"],
-  "web_accessible_resources": ["assets/js/handsfree/*"],
   "content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
   
   "options_page": "src/options/stream-capture.html",
@@ -28,9 +27,19 @@
       ],
       "js": [
         "assets/js/handsfree/handsfree.js",
-        "src/content/handsfree.js"
+        "src/content/handsfree.js",
+
+        "assets/js/polyfill/webxr-polyfill.js",
+        "assets/js/ConfigurationManager.js",
+        "src/content/webxr.js"
       ]
     }
+  ],
+
+  "web_accessible_resources": [
+    "assets/js/handsfree/*",
+    "assets/js/devices.json",
+    "assets/3d/hall_empty.glb"
   ],
 
   "browser_action": {
