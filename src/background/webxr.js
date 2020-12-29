@@ -17,7 +17,7 @@ chrome.runtime.onConnect.addListener(port => {
 
     // transfer message between panel and contentScript of the same tab
 
-    if (port.name === 'panel') {
+    if (port.name === 'webxrDevTools') {
       if (portMap.contentScript) {
         portMap.contentScript.postMessage(message);
       }

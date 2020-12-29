@@ -1,6 +1,3 @@
-port = chrome.runtime.connect({name: 'panel'})
-const tabId = chrome.devtools.inspectedWindow.tabId;
-
 /**
  * Receive message from contentScript via background
  */
@@ -53,9 +50,7 @@ port.onMessage.addListener(message => {
 
 const postMessage = (message) => {
   message.tabId = tabId;
-  console.log('before')
   port.postMessage(message);
-  console.log('after')
 };
 
 const notifyPoseChange = (node) => {
