@@ -6,14 +6,14 @@
   "permissions": ["*://*/*", "storage", "tabs", "activeTab"],
   "content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
   
-  "options_page": "src/options/stream-capture.html",
-  "devtools_page": "src/devtools/index.html",
+  "options_page": "/src/options/stream-capture.html",
+  "devtools_page": "/src/devtools/index.html",
 
   "background": {
     "scripts": [
-      "assets/js/handsfree/handsfree.js",
-      "src/background/handsfree.js",
-      "src/background/webxr.js"
+      "/assets/js/handsfree/handsfree.js",
+      "/src/background/handsfree.js",
+      "/src/background/webxr.js"
     ],
     "persistent": false
   },
@@ -23,39 +23,41 @@
       "matches": ["*://*/*"],
       "exclude_matches": ["*://localhost/*"],
       "css": [
-        "assets/js/handsfree/assets/handsfree.css"
+        "/assets/js/handsfree/assets/handsfree.css"
       ],
       "js": [
-        "assets/js/handsfree/handsfree.js",
-        "src/content/handsfree.js",
+        "/assets/js/handsfree/handsfree.js",
+        "/src/content/handsfree.js",
 
-        "assets/js/polyfill/webxr-polyfill.js",
-        "assets/js/ConfigurationManager.js",
-        "src/content/webxr.js"
-      ]
+        "/assets/js/polyfill/webxr-polyfill.js",
+        "/assets/js/ConfigurationManager.js",
+        "/src/content/webxr.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true  
     }
   ],
 
   "web_accessible_resources": [
-    "assets/js/handsfree/*",
-    "assets/js/devices.json",
-    "assets/3d/hall_empty.glb"
+    "/assets/js/handsfree/*",
+    "/assets/js/devices.json",
+    "/assets/3d/hall_empty.glb"
   ],
 
   "browser_action": {
-    "default_popup": "src/popup/index.html",
+    "default_popup": "/src/popup/index.html",
     "default_icon": {
-      "16": "assets/favicon.png",
-      "32": "assets/favicon.png",
-      "48": "assets/favicon.png",
-      "128": "assets/favicon.png"
+      "16": "/assets/favicon.png",
+      "32": "/assets/favicon.png",
+      "48": "/assets/favicon.png",
+      "128": "/assets/favicon.png"
     }
   },
     
   "icons": {
-    "16": "assets/favicon.png",
-    "32": "assets/favicon.png",
-    "48": "assets/favicon.png",
-    "128": "assets/favicon.png"
+    "16": "/assets/favicon.png",
+    "32": "/assets/favicon.png",
+    "48": "/assets/favicon.png",
+    "128": "/assets/favicon.png"
   }
 }
