@@ -13,7 +13,8 @@
   "background": {
     "scripts": [
       "assets/js/handsfree/handsfree.js",
-      "src/background/handsfree.js"
+      "src/background/handsfree.js",
+      "src/background/webxr.js"
     ],
     "persistent": false
   },
