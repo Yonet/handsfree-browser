@@ -4,5 +4,5 @@
 chrome.devtools.panels.create(
   'WebXR',
   '/assets/favicon.png',
-  '/src/devtools/webxr.html'
+  '/src/devtools/webxr/webxr.html'
 )
