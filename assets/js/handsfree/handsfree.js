@@ -3418,7 +3418,7 @@
    */
   var defaultConfig = {
     // Use CDN by default
-    assetsPath: 'https://unpkg.com/handsfree@8.0.9/build/lib/assets',
+    assetsPath: 'https://unpkg.com/handsfree@8.0.10/build/lib/assets',
     
     // This will load everything but the models. This is useful when you want to use run inference
     // on another device or context but run the plugins on the current device
@@ -6744,7 +6744,7 @@
             🧙‍♂️ Presenting 🧙‍♀️
 
                 Handsfree.js
-                  8.0.9
+                  8.0.10
 
     Docs:       https://handsfree.js.org
     Repo:       https://github.com/midiblocks/handsfree
@@ -6801,7 +6801,7 @@
       
       // Assign the instance ID
       this.id = ++id;
-      this.version = '8.0.9';
+      this.version = '8.0.10';
       this.data = {};
 
       // Dependency management
@@ -6902,7 +6902,11 @@
       // Context 2D canvases
       this.debug.$canvas = {};
       this.debug.context = {};
-      this.config.setup.canvas.video = {}
+      this.config.setup.canvas.video = {
+        width: this.debug.$video.width,
+        height: this.debug.$video.height
+      }
+
       // The video canvas is used to display the video
       ;['video', 'weboji', 'facemesh', 'pose', 'hands', 'holistic'].forEach(model => {
         this.debug.$canvas[model] = {};
@@ -7119,18 +7123,16 @@
       });
 
       // Render video behind everything else
+      // - Note: Weboji uses its own camera
       if (this.config.showDebug) {
-        const activeModel = ['hands', 'pose', 'holistic', 'facemesh'].find(model => {
+        const isUsingCamera = ['hands', 'pose', 'holistic', 'facemesh'].find(model => {
           if (this.model[model].enabled) {
             return model
           }
         });
 
-        if (activeModel && this.model[activeModel]?.camera) {
-          // @fixme let's optimize this
-          this.debug.$canvas.video.width = this.debug.$canvas[activeModel].width;
-          this.debug.$canvas.video.height = this.debug.$canvas[activeModel].height;
-          this.debug.context.video.drawImage(this.model[activeModel].camera.video, 0, 0, this.debug.$canvas.video.width, this.debug.$canvas.video.height);
+        if (isUsingCamera) {
+          this.debug.context.video.drawImage(this.debug.$video, 0, 0, this.debug.$canvas.video.width, this.debug.$canvas.video.height);
         }
       }
 

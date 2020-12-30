@@ -1,4 +1,10 @@
 /**
+ * Globals
+ */
+tabId = chrome.devtools.inspectedWindow.tabId
+port = chrome.runtime.connect({name: 'webxrDevTools'})
+
+/**
  * Cache elements and settings
  */
 const $handsfree = {
@@ -12,8 +18,7 @@ const $handsfree = {
  * @see https://handsfree.js.org/ref/prop/config
  */
 handsfree = new Handsfree({
-  assetsPath: chrome.runtime.getURL('/assets/handsfree/assets'),
-  showDebug: true,
+  isClient: true,
   weboji: true
 })
 
@@ -69,11 +74,12 @@ handsfree.use('threeUpdater', {
 })
 
 /**
- * Toggle Handsfree
+ * Listeners
  */
-document.querySelector('#handsfree-start').addEventListener('click', function () {
-  handsfree.start()
-})
-document.querySelector('#handsfree-stop').addEventListener('click', function () {
-  handsfree.stop()
+port.onMessage.addListener(message => {
+  switch (message.action) {
+    case 'handsfree-data':
+      handsfree.runPlugins(message.data)
+      break
+  }
 })

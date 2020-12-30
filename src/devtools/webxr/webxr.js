@@ -1,8 +1,5 @@
-port = chrome.runtime.connect({name: 'panel'})
-const tabId = chrome.devtools.inspectedWindow.tabId;
-
 /**
- * Receive message from contentScript via background
+ * Receive message from webxrContentScript via background
  */
 port.onMessage.addListener(message => {
   switch (message.action) {
@@ -49,13 +46,11 @@ port.onMessage.addListener(message => {
   }
 });
 
-// send message to contentScript via background
+// send message to webxrContentScript via background
 
 const postMessage = (message) => {
   message.tabId = tabId;
-  console.log('before')
   port.postMessage(message);
-  console.log('after')
 };
 
 const notifyPoseChange = (node) => {

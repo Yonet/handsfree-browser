@@ -1,4 +1,4 @@
-const port = chrome.runtime.connect({name: 'contentScript'});
+const port = chrome.runtime.connect({name: 'webxrContentScript'});
 
 const dispatchCustomEvent = (type, detail) => {
   window.dispatchEvent(new CustomEvent(type, {
