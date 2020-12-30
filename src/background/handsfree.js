@@ -95,6 +95,10 @@ chrome.runtime.onMessage.addListener(function(message, sender, respond) {
      * Start Handsfree
      */
     case 'handsfreeStart':
+      handsfree.on('data', () => {
+        handsfree.debug.$video.requestPictureInPicture()
+      }, {once: true})
+      
       chrome.storage.local.set({isHandsfreeStarted: true}, function() {
         handsfree.start()
         handsfree.enablePlugins('browser')
