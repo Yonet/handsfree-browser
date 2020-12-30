@@ -1,5 +1,5 @@
 /**
- * Receive message from contentScript via background
+ * Receive message from webxrContentScript via background
  */
 port.onMessage.addListener(message => {
   switch (message.action) {
@@ -46,7 +46,7 @@ port.onMessage.addListener(message => {
   }
 });
 
-// send message to contentScript via background
+// send message to webxrContentScript via background
 
 const postMessage = (message) => {
   message.tabId = tabId;

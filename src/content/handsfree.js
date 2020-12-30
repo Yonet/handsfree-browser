@@ -10,11 +10,11 @@ handsfree.enablePlugins('browser')
 chrome.runtime.onMessage.addListener(function(message) {
   switch (message.action) {
     case 'handsfree-data':
-      console.log(message.data)
       handsfree.runPlugins(message.data)
     break
 
-    case 'handsfreeStop':
+    case 'handsfree-debug':
+      console.log(message.data)
     break
   }
 })
