@@ -20,24 +20,24 @@ const handsfree = new Handsfree({
 /**
  * Stream the canvases
  */
-handsfree.use('updateCanvas', {
-  onFrame () {
-    // const data = {
-    //   $canvas: {
-    //     hands: {
-    //       data: handsfree.debug.context.hands.getImageData(0, 0, handsfree.debug.$canvas.hands.width, handsfree.debug.$canvas.hands.height),
-    //       width: handsfree.debug.$canvas.hands.width,
-    //       height: handsfree.debug.$canvas.hands.height
-    //     }
-    //   }
-    // }
+// This will receive the layers and stream
+const $pipCanvas = document.createElement('CANVAS')
+document.body.appendChild($pipCanvas)
+const pipContext = $pipCanvas.getContext('2d')
 
-    // // Send data to content
-    // chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-    //   for (var i = 0; i < tabs.length; ++i) {
-    //     chrome.tabs.sendMessage(tabs[i].id, {action: 'handsfree-debug', data})
-    //   }
-    // })
+// This will be the video we pip
+const $videoPip = document.createElement('VIDEO')
+document.body.appendChild($videoPip)
+
+handsfree.use('canvasUpdater', {
+  onFrame () {
+    // Merge all active models into a single layer
+    pipContext.drawImage(handsfree.debug.$video, 0, 0)
+    Object.keys(handsfree.model).forEach(name => {
+      if (handsfree.model[name].enabled) {
+        pipContext.drawImage(handsfree.debug.$canvas[name], 0, 0)
+      }
+    })
   }
 })
 
@@ -93,12 +93,23 @@ chrome.runtime.onMessage.addListener(function(message, sender, respond) {
   switch (message.action) {
     /**
      * Start Handsfree
+     * - Starts picture in picture
      */
     case 'handsfreeStart':
+      // Setup the picture in picture
       handsfree.on('data', () => {
-        handsfree.debug.$video.requestPictureInPicture()
+        $pipCanvas.width = $videoPip.width = handsfree.debug.$video.width
+        $pipCanvas.height = $videoPip.height = handsfree.debug.$video.height
+        $videoPip.srcObject = $pipCanvas.captureStream()
+        $videoPip.onloadedmetadata = () => {
+          $videoPip.play()
+        }
+        $videoPip.onplay = () => {
+          $videoPip.requestPictureInPicture()
+        }
       }, {once: true})
       
+      // Start Handsfree and set the badge
       chrome.storage.local.set({isHandsfreeStarted: true}, function() {
         handsfree.start()
         handsfree.enablePlugins('browser')
@@ -115,11 +126,9 @@ chrome.runtime.onMessage.addListener(function(message, sender, respond) {
      * Stop Handsfree
      */
     case 'handsfreeStop':
-      chrome.storage.local.set({isHandsfreeStarted: false}, function() {
+      chrome.storage.local.set({isHandsfreeStarted: false}, () => {
         handsfree.stop()
-        chrome.browserAction.setBadgeText({
-          text: ''
-        })
+        chrome.browserAction.setBadgeText({text: ''})
       })
       return
 
@@ -127,7 +136,7 @@ chrome.runtime.onMessage.addListener(function(message, sender, respond) {
      * Load a dependency into the current tab
      */
     case 'handsfreeLoadDependency':
-      chrome.tabs.executeScript({file: message.file}, function () {
+      chrome.tabs.executeScript({file: message.file}, () => {
         Promise.resolve('').then(respond)
       })
       return true
@@ -137,10 +146,12 @@ chrome.runtime.onMessage.addListener(function(message, sender, respond) {
 /**
  * Open the Options Page to prompt to capture the webcam feed
  */
-chrome.runtime.onInstalled.addListener(function() {
+chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get(['hasCapturedStream'], (data) => {
-    if (!data.hasCapturedStream) {
-      chrome.runtime.openOptionsPage()
-    }
+    chrome.storage.local.set({isHandsfreeStarted: false}, () => {
+      if (!data.hasCapturedStream) {
+        chrome.runtime.openOptionsPage()
+      }
+    })
   })
 })
