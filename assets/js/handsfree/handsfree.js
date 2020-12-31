@@ -319,7 +319,7 @@
     dataReceived (results) {
       this.data = results;
       this.handsfree.data.hands = results;
-      if (this.handsfree.config.showDebug) {
+      if (this.handsfree.isDebugging) {
         this.debug(results);
       }
     }
@@ -424,7 +424,7 @@
     dataReceived (results) {
       this.data = results;
       this.handsfree.data.facemesh = results;
-      if (this.handsfree.config.showDebug) {
+      if (this.handsfree.isDebugging) {
         this.debug(results);
       }
     }
@@ -535,7 +535,7 @@
     dataReceived (results) {
       this.data = results;
       this.handsfree.data.pose = results;
-      if (this.handsfree.config.showDebug) {
+      if (this.handsfree.isDebugging) {
         this.debug(results);
       }
     }
@@ -637,7 +637,7 @@
     dataReceived (results) {
       this.data = results;
       this.handsfree.data.holistic = results;
-      if (this.handsfree.config.showDebug) {
+      if (this.handsfree.isDebugging) {
         this.debug(results);
       }
     }
@@ -3418,7 +3418,7 @@
    */
   var defaultConfig = {
     // Use CDN by default
-    assetsPath: 'https://unpkg.com/handsfree@8.0.10/build/lib/assets',
+    assetsPath: 'https://unpkg.com/handsfree@8.1.0/build/lib/assets',
     
     // This will load everything but the models. This is useful when you want to use run inference
     // on another device or context but run the plugins on the current device
@@ -6744,7 +6744,7 @@
             🧙‍♂️ Presenting 🧙‍♀️
 
                 Handsfree.js
-                  8.0.10
+                  8.1.0
 
     Docs:       https://handsfree.js.org
     Repo:       https://github.com/midiblocks/handsfree
@@ -6765,6 +6765,7 @@
     #3 Plugins
     #4 Events
     #5 Helpers
+    #6 Debugger
 
   */
 
@@ -6801,7 +6802,7 @@
       
       // Assign the instance ID
       this.id = ++id;
-      this.version = '8.0.10';
+      this.version = '8.1.0';
       this.data = {};
 
       // Dependency management
@@ -6870,76 +6871,6 @@
       this.model.pose = new PoseModel(this, this.config.pose);
       this.model.facemesh = new FacemeshModel(this, this.config.facemesh);
       this.model.holistic = new HolisticModel(this, this.config.holistic);
-    }
-
-    /**
-     * Sets up the video and canvas elements
-     */
-    setupDebugger () {
-      this.debug = {};
-      
-      // Feedback wrap
-      if (!this.config.setup.wrap.$el) {
-        const $wrap = document.createElement('DIV');
-        $wrap.classList.add('handsfree-feedback');
-        this.config.setup.wrap.$el = $wrap;
-      }
-      this.debug.$wrap = this.config.setup.wrap.$el;
-
-      // Create video element
-      if (!this.config.setup.video.$el) {
-        const $video = document.createElement('VIDEO');
-        $video.setAttribute('playsinline', true);
-        $video.classList.add('handsfree-video');
-        $video.setAttribute('id', `handsfree-video-${this.id}`);
-        this.config.setup.video.$el = $video;
-      }
-      this.debug.$video = this.config.setup.video.$el;
-      this.debug.$video.width = this.config.setup.video.width;
-      this.debug.$video.height = this.config.setup.video.height;
-      this.debug.$wrap.appendChild(this.debug.$video);
-
-      // Context 2D canvases
-      this.debug.$canvas = {};
-      this.debug.context = {};
-      this.config.setup.canvas.video = {
-        width: this.debug.$video.width,
-        height: this.debug.$video.height
-      }
-
-      // The video canvas is used to display the video
-      ;['video', 'weboji', 'facemesh', 'pose', 'hands', 'holistic'].forEach(model => {
-        this.debug.$canvas[model] = {};
-        this.debug.context[model] = {};
-        
-        let $canvas = this.config.setup.canvas[model].$el;
-        if (!$canvas) {
-          $canvas = document.createElement('CANVAS');
-          this.config.setup.canvas[model].$el = $canvas;
-        }
-        
-        // Classes
-        $canvas.classList.add('handsfree-canvas', `handsfree-canvas-${model}`, `handsfree-hide-when-started-without-${model}`);
-        $canvas.setAttribute('id', `handsfree-canvas-${model}-${this.id}`);
-
-        // Dimensions
-        this.debug.$canvas[model] = this.config.setup.canvas[model].$el;
-        this.debug.$canvas[model].width = this.config.setup.canvas[model].width;
-        this.debug.$canvas[model].height = this.config.setup.canvas[model].height;
-        this.debug.$wrap.appendChild(this.debug.$canvas[model]);
-
-        // Context
-        if (model === 'weboji') ; else {
-          this.debug.context[model] = this.debug.$canvas[model].getContext('2d');  
-        }
-      });
-      
-      // Append everything to the body
-      this.config.setup.wrap.$parent.appendChild(this.debug.$wrap);
-
-      // Add classes
-      this.config.showDebug && document.body.classList.add('handsfree-show-debug');
-      this.config.showVideo && document.body.classList.add('handsfree-show-video');
     }
 
     /**
@@ -7124,7 +7055,7 @@
 
       // Render video behind everything else
       // - Note: Weboji uses its own camera
-      if (this.config.showDebug) {
+      if (this.isDebugging) {
         const isUsingCamera = ['hands', 'pose', 'holistic', 'facemesh'].find(model => {
           if (this.model[model].enabled) {
             return model
@@ -7334,7 +7265,7 @@
     }
 
     /**
-     * Gets the webcam media stream into handsfree.feedback.stream
+     * Gets the webcam media stream into handsfree.debug.$video
      * @see https://handsfree.js.org/ref/method/getUserMedia
      * 
      * @param {Object} callback The callback to call after the stream is received
@@ -7388,6 +7319,105 @@
       Object.keys(corePlugins).forEach(name => {
         this.use(name, corePlugins[name]);
       });    
+    }
+
+
+
+    /////////////////////////////////////////////////////////////
+    //////////////////////// #6 DEBUGGER ////////////////////////
+    /////////////////////////////////////////////////////////////
+
+
+
+    /**
+     * Sets up the video and canvas elements
+     */
+    setupDebugger () {
+      this.debug = {};
+      
+      // debugger wrap
+      if (!this.config.setup.wrap.$el) {
+        const $wrap = document.createElement('DIV');
+        $wrap.classList.add('handsfree-debugger');
+        this.config.setup.wrap.$el = $wrap;
+      }
+      this.debug.$wrap = this.config.setup.wrap.$el;
+
+      // Create video element
+      if (!this.config.setup.video.$el) {
+        const $video = document.createElement('VIDEO');
+        $video.setAttribute('playsinline', true);
+        $video.classList.add('handsfree-video');
+        $video.setAttribute('id', `handsfree-video-${this.id}`);
+        this.config.setup.video.$el = $video;
+      }
+      this.debug.$video = this.config.setup.video.$el;
+      this.debug.$video.width = this.config.setup.video.width;
+      this.debug.$video.height = this.config.setup.video.height;
+      this.debug.$wrap.appendChild(this.debug.$video);
+
+      // Context 2D canvases
+      this.debug.$canvas = {};
+      this.debug.context = {};
+      this.config.setup.canvas.video = {
+        width: this.debug.$video.width,
+        height: this.debug.$video.height
+      }
+
+      // The video canvas is used to display the video
+      ;['video', 'weboji', 'facemesh', 'pose', 'hands', 'holistic'].forEach(model => {
+        this.debug.$canvas[model] = {};
+        this.debug.context[model] = {};
+        
+        let $canvas = this.config.setup.canvas[model].$el;
+        if (!$canvas) {
+          $canvas = document.createElement('CANVAS');
+          this.config.setup.canvas[model].$el = $canvas;
+        }
+        
+        // Classes
+        $canvas.classList.add('handsfree-canvas', `handsfree-canvas-${model}`, `handsfree-hide-when-started-without-${model}`);
+        $canvas.setAttribute('id', `handsfree-canvas-${model}-${this.id}`);
+
+        // Dimensions
+        this.debug.$canvas[model] = this.config.setup.canvas[model].$el;
+        this.debug.$canvas[model].width = this.config.setup.canvas[model].width;
+        this.debug.$canvas[model].height = this.config.setup.canvas[model].height;
+        this.debug.$wrap.appendChild(this.debug.$canvas[model]);
+
+        // Context
+        if (model === 'weboji') ; else {
+          this.debug.context[model] = this.debug.$canvas[model].getContext('2d');  
+        }
+      });
+      
+      // Append everything to the body
+      this.config.setup.wrap.$parent.appendChild(this.debug.$wrap);
+
+      // Add classes
+      if (this.config.showDebug) {
+        this.showDebugger();
+      } else {
+        this.hideDebugger();
+      }
+    }
+
+    /**
+     * Shows the debugger
+     */
+    showDebugger () {
+      this.isDebugging = true;
+      document.body.classList.add('handsfree-show-debug');
+      document.body.classList.remove('handsfree-hide-debug');
+    }
+
+    /**
+     * Hides the debugger
+     */
+    hideDebugger () {
+      this.isDebugging = false;
+      document.body.classList.remove('handsfree-show-debug');
+      document.body.classList.add('handsfree-hide-debug');
     }
   }
 
