@@ -36,3 +36,11 @@ Each of the files are located in their respective context folders in `/src/`. Ha
 - The popup panel has a "Start/Stop Webcam" button that communicates with the background script to start the webcam: `/src/popup/index.html`
 - The background page is where the models are stored and run. This keeps everything isolated and only asks for webcam permission once (vs on every domain): `/src/background/handsfree.js`
 - The background page also uses the "Picture in Picture" API to "pop the webcam" out of the browser. It renders the webcam feed and debug canvases into a single canvas, and uses that as the `srcObject` to a separate video element which is the PiP'ed
+
+## How to install
+
+- Chrome: Install as an unpacked chrome extension. Visit `chrome://extensions` and enable <kbd>Developer Mode</kbd> on the top right, then click <kbd>Load unpacked</kbd> and select this project's root folder
+
+![](https://i.imgur.com/jXmhYnb.png)
+
+- Firefox: Coming soon, I switched computers and didn't realize I continued developing on Chrome 😆
