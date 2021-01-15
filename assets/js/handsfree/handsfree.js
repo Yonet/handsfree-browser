@@ -120,7 +120,7 @@
       super(handsfree, config);
       this.name = 'hands';
 
-      this.palmPoints = [0, 1, 2, 5, 9, 13, 17];
+      this.palmPoints = [0, 5, 9, 13, 17];
     }
 
     loadDependencies (callback) {
@@ -194,11 +194,39 @@
     }
     // Called through this.api.onResults
     dataReceived (results) {
+      // Get center of palm
+      if (results.multiHandLandmarks) {
+        results = this.getCenterOfPalm(results);
+      }
+
+      // Update and debug
       this.data = results;
       this.handsfree.data.hands = results;
       if (this.handsfree.isDebugging) {
         this.debug(results);
       }
+    }
+
+    /**
+     * Calculates the center of the palm
+     */
+    getCenterOfPalm (results) {
+      results.multiHandLandmarks.forEach((hand, n) => {
+        let x = 0;
+        let y = 0;
+        
+        this.palmPoints.forEach(i => {
+          x += hand[i].x;
+          y += hand[i].y;
+        });
+
+        x /= this.palmPoints.length;
+        y /= this.palmPoints.length;
+        
+        results.multiHandLandmarks[n][21] = {x, y};
+      });
+      
+      return results
     }
 
     /**
@@ -6932,18 +6960,15 @@
     enabled: false,
 
     // Number of frames the current element is the same as the last
-    numFramesFocused: 0,
+    numFramesFocused: [0, 0, 0, 0],
     // The current scrollable target
-    $target: null,
+    $target: [null, null, null, null],
 
     // The original grab point
-    origScrollTop: 0,
+    origScrollTop: [0, 0, 0, 0],
 
     // The tweened scrollTop, used to smoothen out scroll
-    tweenScroll: {y: 0},
-
-    // Number of frames that has passed since the last grab
-    framesSinceLastGrab: 0,
+    tweenScroll: [{y: 0}, {y: 0}, {y: 0}, {y: 0}],
 
     config: {
       // Number of frames over the same element before activating that element
@@ -6959,51 +6984,71 @@
       speed: 2
     },
 
-    onUse () {
-      this.$target = window;
-    },
-
     /**
      * Scroll the page when the cursor goes above/below the threshold
      */
     onFrame ({hands}) {
-      if (!hands.multiHandLandmarks) return
-      const height = this.handsfree.debug.$canvas.hands.height;
-      
-      // Detect if the threshold for clicking is met with specific morphs
-      const a = hands.multiHandLandmarks[0][4].x - hands.multiHandLandmarks[0][8].x;
-      const b = hands.multiHandLandmarks[0][4].y - hands.multiHandLandmarks[0][8].y;
-      const c = Math.sqrt(a*a + b*b) * height;
-      this.thresholdMet = c < this.config.threshold;
+      // Wait for other plugins to update
+      setTimeout(() => {
+        if (!hands.pointer) return
+        const height = this.handsfree.debug.$canvas.hands.height;
 
-      // Set the original grab point
-      if (this.thresholdMet) {
-        if (this.framesSinceLastGrab > this.config.numThresholdErrorFrames) {
-          this.origScrollTop = this.getTargetScrollTop() + hands.multiHandLandmarks[0][4].y * height * this.config.speed;
-          this.handsfree.TweenMax.killTweensOf(this.tweenScroll);
-        }
-        this.framesSinceLastGrab = 0;
-      }
-      ++this.framesSinceLastGrab;
-      
-      // Scroll
-      if (this.framesSinceLastGrab < this.config.numThresholdErrorFrames) {
-        this.handsfree.TweenMax.to(this.tweenScroll, 1, {
-          y: this.origScrollTop - hands.multiHandLandmarks[0][4].y * height * this.config.speed,
-          overwrite: true,
-          ease: 'linear.easeNone',
-          immediateRender: true  
+        hands.pointer.forEach((pointer, n) => {
+          // @fixme Get rid of n > origPinch.length
+          if (!pointer.isVisible || n > hands.origPinch.length) return
+
+          // Start scroll
+          if (hands.pinchState[n][0] === 'start') {
+            let $potTarget = document.elementFromPoint(pointer.x, pointer.y);
+
+            this.$target[n] = this.getTarget($potTarget);
+            this.origScrollTop[n] = this.getTargetScrollTop(this.$target[n]);
+            this.handsfree.TweenMax.killTweensOf(this.tweenScroll[n]);
+          }
+
+          if (hands.pinchState[n][0] === 'held' && this.$target[n]) {
+            console.log(this.origScrollTop[n], (hands.origPinch[n][0].y - hands.curPinch[n][0].y) * height);
+
+            this.handsfree.TweenMax.to(this.tweenScroll[n], 1, {
+              y: this.origScrollTop[n] + (hands.origPinch[n][0].y - hands.curPinch[n][0].y) * height,
+              overwrite: true,
+              ease: 'linear.easeNone',
+              immediateRender: true  
+            });
+
+            this.$target[n].scrollTo(0, this.tweenScroll[n].y);
+          }
         });
-        
-        this.$target.scrollTo(0, this.tweenScroll.y);
+      });
+    },
+
+    /**
+     * Finds the closest scroll area
+     */
+    getTarget ($potTarget) {
+      const styles = $potTarget && $potTarget.getBoundingClientRect ? getComputedStyle($potTarget) : {};
+
+      if ($potTarget && $potTarget.scrollHeight > $potTarget.clientHeight &&
+        (styles.overflow === 'auto' ||
+          styles.overflow === 'auto scroll' ||
+          styles.overflowY === 'auto' ||
+          styles.overflowY === 'auto scroll')
+      ) {
+        return $potTarget
+      } else {
+        if ($potTarget && $potTarget.parentElement) {
+          return this.getTarget($potTarget.parentElement)
+        } else {
+          return window
+        }
       }
     },
 
     /**
      * Gets the scrolltop, taking account the window object
      */
-    getTargetScrollTop () {
-      return this.$target.scrollY || this.$target.scrollTop || 0
+    getTargetScrollTop ($target) {
+      return $target.scrollY || $target.scrollTop || 0
     }
   };
 
@@ -7016,6 +7061,8 @@
     fingertipIndex: [8, 12, 16, 20],
 
     // Number of frames the current element is the same as the last
+    // [left, right]
+    // [index, middle, ring, pinky]
     numFramesFocused: [[0, 0, 0, 0,], [0, 0, 0, 0]],
 
     // Whether the fingers are touching
@@ -7191,6 +7238,121 @@
     }
   };
 
+  /**
+   * Move a pointer with your palm
+   */
+  var pluginPalmPointers = {
+    models: 'hands',
+    tags: ['browser'],
+    enabled: false,
+
+    // The pointer element
+    $pointer: [],
+
+    // Pointers position
+    pointer: [
+      { x: -20, y: -20, isVisible: false },
+      { x: -20, y: -20, isVisible: false },
+      { x: -20, y: -20, isVisible: false },
+      { x: -20, y: -20, isVisible: false }
+    ],
+
+    // Used to smoothen out the pointer
+    tween: [
+      {x: -20, y: -20},
+      {x: -20, y: -20},
+      {x: -20, y: -20},
+      {x: -20, y: -20},
+    ],
+
+    config: {
+      offset: {
+        x: 0,
+        y: 0
+      },
+
+      speed: {
+        x: 1.5,
+        y: 1.5
+      }
+    },
+
+    onEnable () {
+      if (!this.$pointer[0]) {
+        for (let i = 0; i < 4; i++) {
+          const $pointer = document.createElement('div');
+          $pointer.classList.add('handsfree-pointer', 'handsfree-pointer-palm', 'handsfree-hide-when-started-without-hands');
+          document.body.appendChild($pointer);
+          this.$pointer[i] = $pointer;
+        }
+      }
+
+      for (let i = 0; i < 4; i++) {
+        this.$pointer[i].classList.remove('handsfree-hidden');
+        this.pointer[i] = { x: -20, y: -20 };
+      }
+    },
+
+    onUse () {
+      this.onEnable();
+    },
+
+    onFrame ({hands}) {
+      if (!hands?.multiHandLandmarks) return
+      hands.pointer = [
+        { isVisible: false },
+        { isVisible: false },
+        { isVisible: false },
+        { isVisible: false }
+      ];
+      
+      hands.multiHandLandmarks.forEach((landmarks, n) => {
+        // Use the correct hand index
+        let hand;
+        if (n < 2) {
+          hand = hands.multiHandedness[n].label === 'Right' ? 0 : 1;
+        } else {
+          hand = hands.multiHandedness[n].label === 'Right' ? 2 : 3;
+        }
+
+        this.handsfree.TweenMax.to(this.tween[hand], 1, {
+          x: window.outerWidth - hands.multiHandLandmarks[n][21].x * window.outerWidth + this.config.offset.x,
+          y: hands.multiHandLandmarks[n][21].y * window.outerHeight + this.config.offset.y,
+          overwrite: true,
+          ease: 'linear.easeNone',
+          immediate: true
+        });
+    
+        this.$pointer[hand].style.left = `${this.tween[hand].x}px`;
+        this.$pointer[hand].style.top = `${this.tween[hand].y}px`;
+        
+        hands.pointer[hand] = {
+          x: this.tween[hand].x,
+          y: this.tween[hand].y,
+          isVisible: true
+        };
+      });
+
+      // Toggle pointers
+      hands.pointer.forEach((pointer, hand) => {
+        if (pointer.isVisible) {
+          this.$pointer[hand].style.display = 'block';
+        } else {
+          this.$pointer[hand].style.display = 'none';
+        }
+      });
+    },
+
+    /**
+     * Toggle pointer
+     */
+    onDisable() {
+      this.$pointer.forEach($pointer => {
+        $pointer.classList.add('handsfree-hidden');
+      });
+    }
+  };
+
   /*
             ✨
             (\.   \      ,/)
@@ -7235,6 +7397,7 @@
     faceScroll: pluginFaceScroll,
     pinchScroll: pluginPinchScroll,
     pinchers: pluginPinchers,
+    palmPointers: pluginPalmPointers,
   };
 
 

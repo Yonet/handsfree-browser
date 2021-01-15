@@ -1,4 +1,6 @@
 /* Debugger */
+.handsfree-pointer {display: none !important}
+
 .handsfree-debugger,
 .handsfree-video,
 .handsfree-canvas {
