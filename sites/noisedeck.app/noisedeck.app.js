@@ -6,6 +6,7 @@ function normalize (num, $el) {
 }
 
 const $ = {
+  // Right index
   hueRotation2: {
     el: document.querySelector('#hueRotation2'),
     start: 0
@@ -13,7 +14,23 @@ const $ = {
   hueRange2: {
     el: document.querySelector('#hueRange2'),
     start: 0
-  }
+  },
+
+  // Right middle
+  loopAmp2: {
+    el: document.querySelector('#loopAmp2'),
+    start: 0
+  },
+  loopFreq2: {
+    el: document.querySelector('#loopFreq2'),
+    start: 0
+  },
+
+  // Left index
+  brightness: {
+    el: document.querySelector('#brightness'),
+    start: 0
+  },
 }
 handsfree.disablePlugins('browser')
 
@@ -21,7 +38,7 @@ handsfree.use('noisedeck.app', {
   onFrame ({hands}) {
     if (!hands?.multiHandLandmarks) return
 
-    // Right Pointer
+    // Right Pointer: Hue
     if (hands.pointer[1].isVisible) {
       if (hands.pinchState[1][0] === 'start') {
         $.hueRange2.start = $.hueRange2.el.value
@@ -36,6 +53,38 @@ handsfree.use('noisedeck.app', {
           $.hueRotation2.start - (hands.curPinch[1][0].y - hands.origPinch[1][0].y),
           $.hueRotation2.el.max,
           $.hueRotation2.el.min
+        )
+      }
+    }
+
+    // Right Middle: Loop
+    if (hands.pointer[1].isVisible) {
+      if (hands.pinchState[1][1] === 'start') {
+        $.loopAmp2.start = $.loopAmp2.el.value
+        $.loopFreq2.start = $.loopFreq2.el.value
+      } else if (hands.pinchState[1][1] === 'held') {
+        $.loopAmp2.el.value = normalize(
+          $.loopAmp2.start - (hands.origPinch[1][1].x - hands.curPinch[1][1].x) * 2,
+          $.loopAmp2.el.max,
+          $.loopAmp2.el.min
+        )
+        $.loopFreq2.el.value = normalize(
+          $.loopFreq2.start - (hands.curPinch[1][1].y - hands.origPinch[1][1].y) * 20,
+          $.loopFreq2.el.max,
+          $.loopFreq2.el.min
+        )
+      }
+    }
+
+    // Left Index: Kaleidoscope
+    if (hands.pointer[0].isVisible) {
+      if (hands.pinchState[0][0] === 'start') {
+        $.brightness.start = $.brightness.el.value
+      } else if (hands.pinchState[0][0] === 'held') {
+        $.brightness.el.value = normalize(
+          $.brightness.start - (hands.origPinch[0][0].x - hands.curPinch[0][0].x) * 2,
+          $.brightness.el.max,
+          $.brightness.el.min
         )
       }
     }
