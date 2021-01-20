@@ -74,8 +74,16 @@
      * Loads a script and runs a callback
      * @param {string} src The absolute path of the source file
      * @param {*} callback The callback to call after the file is loaded
+     * @param {boolean} skip Whether to skip loading the dependency and just call the callback
      */
-    loadDependency (src, callback) {
+    loadDependency (src, callback, skip = false) {
+      // Skip and run callback
+      if (skip) {
+        callback && callback();
+        return
+      }
+      
+      // Inject script into DOM
       const $script = document.createElement('script');
       $script.async = true;
 
@@ -104,6 +112,722 @@
           this.handsfree.plugin[name].enabled && this.handsfree.plugin[name]?.onFrame(this.handsfree.data);
         });
       }
+    }
+  }
+
+  class HandsModel extends BaseModel {
+    constructor (handsfree, config) {
+      super(handsfree, config);
+      this.name = 'hands';
+
+      this.palmPoints = [0, 5, 9, 13, 17];
+    }
+
+    loadDependencies (callback) {
+      // Just load utils on client
+      if (this.handsfree.config.isClient) {
+        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils.js`, () => {
+          this.onWarmUp(callback);
+        }, !!window.drawConnectors);
+
+        return
+      }
+
+      // Load hands
+      this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/hands/hands.js`, () => {
+        // Configure model
+        this.api = new window.Hands({locateFile: file => {
+          return `${this.handsfree.config.assetsPath}/@mediapipe/hands/${file}`
+        }});
+        this.api.setOptions(this.handsfree.config.hands);
+        this.api.onResults(results => this.dataReceived(results));
+
+        // Load the media stream
+        this.handsfree.getUserMedia(() => {
+          // Warm up before using in loop
+          if (!this.handsfree.mediapipeWarmups.isWarmingUp) {
+            this.warmUp(callback);
+          } else {
+            this.handsfree.on('mediapipeWarmedUp', () => {
+              if (!this.handsfree.mediapipeWarmups.isWarmingUp && !this.handsfree.mediapipeWarmups[this.name]) {
+                this.warmUp(callback);
+              }
+            });
+          }
+        });
+
+        // Load the hands camera module
+        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils.js`, null, !!window.drawConnectors);
+      });
+    }
+
+    /**
+     * Warms up the model
+     */
+    warmUp (callback) {
+      this.handsfree.mediapipeWarmups[this.name] = true;
+      this.handsfree.mediapipeWarmups.isWarmingUp = true;
+      this.api.send({image: this.handsfree.debug.$video}).then(() => {
+        this.handsfree.mediapipeWarmups.isWarmingUp = false;
+          this.onWarmUp(callback);
+      });
+    }
+
+    /**
+     * Called after the model has been warmed up
+     * - If we don't do this there will be too many initial hits and cause an error
+     */
+    onWarmUp (callback) {
+      this.dependenciesLoaded = true;
+      document.body.classList.add('handsfree-model-hands');                    
+      this.handsfree.emit('modelReady', this);
+      this.handsfree.emit('handsModelReady', this);
+      this.handsfree.emit('mediapipeWarmedUp', this);
+      callback && callback(this);
+    }
+
+    /**
+     * Get data
+     */
+    async getData () {
+      this.dependenciesLoaded && await this.api.send({image: this.handsfree.debug.$video});
+    }
+    // Called through this.api.onResults
+    dataReceived (results) {
+      // Get center of palm
+      if (results.multiHandLandmarks) {
+        results = this.getCenterOfPalm(results);
+      }
+
+      // Update and debug
+      this.data = results;
+      this.handsfree.data.hands = results;
+      if (this.handsfree.isDebugging) {
+        this.debug(results);
+      }
+    }
+
+    /**
+     * Calculates the center of the palm
+     */
+    getCenterOfPalm (results) {
+      results.multiHandLandmarks.forEach((hand, n) => {
+        let x = 0;
+        let y = 0;
+        
+        this.palmPoints.forEach(i => {
+          x += hand[i].x;
+          y += hand[i].y;
+        });
+
+        x /= this.palmPoints.length;
+        y /= this.palmPoints.length;
+        
+        results.multiHandLandmarks[n][21] = {x, y};
+      });
+      
+      return results
+    }
+
+    /**
+     * Debugs the hands model
+     */
+    debug (results) {
+      // Bail if drawing helpers haven't loaded
+      if (typeof drawConnectors === 'undefined') return
+      
+      // Clear the canvas
+      this.handsfree.debug.context.hands.clearRect(0, 0, this.handsfree.debug.$canvas.hands.width, this.handsfree.debug.$canvas.hands.height);
+      
+      // Draw skeletons
+      if (results.multiHandLandmarks) {
+        for (const landmarks of results.multiHandLandmarks) {
+          drawConnectors(this.handsfree.debug.context.hands, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 5});
+          drawLandmarks(this.handsfree.debug.context.hands, landmarks, {color: '#FF0000', lineWidth: 2});
+        }
+      }
+    }
+  }
+
+  class FacemeshModel extends BaseModel {
+    constructor (handsfree, config) {
+      super(handsfree, config);
+      this.name = 'facemesh';
+      this.isWarmedUp = false;
+    }
+
+    loadDependencies (callback) {
+      // Just load utils on client
+      if (this.handsfree.config.isClient) {
+        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils.js`, () => {
+          this.onWarmUp(callback);
+        }, !!window.drawConnectors);
+
+        return
+      }
+      
+      // Load facemesh
+      this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/face_mesh/face_mesh.js`, () => {
+        // Configure model
+        this.api = new window.FaceMesh({locateFile: file => {
+          return `${this.handsfree.config.assetsPath}/@mediapipe/face_mesh/${file}`
+        }});
+        this.api.setOptions(this.handsfree.config.facemesh);
+        this.api.onResults(results => this.dataReceived(results));
+
+        // Load the media stream
+        this.handsfree.getUserMedia(() => {
+          // Warm up before using in loop
+          if (!this.handsfree.mediapipeWarmups.isWarmingUp) {
+            this.warmUp(callback);
+          } else {
+            this.handsfree.on('mediapipeWarmedUp', () => {
+              if (!this.handsfree.mediapipeWarmups.isWarmingUp && !this.handsfree.mediapipeWarmups[this.name]) {
+                this.warmUp(callback);
+              }
+            });
+          }
+        });
+
+        // Load the hands camera module
+        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils.js`, null, !!window.drawConnectors);
+      });
+    }
+
+    /**
+     * Warms up the model
+     */
+    warmUp (callback) {
+      this.handsfree.mediapipeWarmups[this.name] = true;
+      this.handsfree.mediapipeWarmups.isWarmingUp = true;
+      this.api.send({image: this.handsfree.debug.$video}).then(() => {
+        this.handsfree.mediapipeWarmups.isWarmingUp = false;
+          this.onWarmUp(callback);
+      });
+    }
+
+    /**
+     * Called after the model has been warmed up
+     * - If we don't do this there will be too many initial hits and cause an error
+     */
+    onWarmUp (callback) {
+      this.dependenciesLoaded = true;
+      document.body.classList.add('handsfree-model-facemesh');                    
+      this.handsfree.emit('modelReady', this);
+      this.handsfree.emit('facemeshModelReady', this);
+      this.handsfree.emit('mediapipeWarmedUp', this);
+      callback && callback(this);
+    }
+    
+    /**
+     * Get data
+     */
+    async getData () {
+      this.dependenciesLoaded && await this.api.send({image: this.handsfree.debug.$video});
+    }
+    // Called through this.api.onResults
+    dataReceived (results) {
+      this.data = results;
+      this.handsfree.data.facemesh = results;
+      if (this.handsfree.isDebugging) {
+        this.debug(results);
+      }
+    }
+
+    /**
+     * Debugs the facemesh model
+     */
+    debug (results) {
+      // Bail if drawing helpers haven't loaded
+      if (typeof drawConnectors === 'undefined') return
+      
+      this.handsfree.debug.context.facemesh.clearRect(0, 0, this.handsfree.debug.$canvas.facemesh.width, this.handsfree.debug.$canvas.facemesh.height);
+
+      if (results.multiFaceLandmarks) {
+        for (const landmarks of results.multiFaceLandmarks) {
+          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 1});
+          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_RIGHT_EYE, {color: '#FF3030'});
+          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_RIGHT_EYEBROW, {color: '#FF3030'});
+          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_LEFT_EYE, {color: '#30FF30'});
+          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_LEFT_EYEBROW, {color: '#30FF30'});
+          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_FACE_OVAL, {color: '#E0E0E0'});
+          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_LIPS, {color: '#E0E0E0'});
+        }
+      }
+    }
+  }
+
+  class PoseModel extends BaseModel {
+    constructor (handsfree, config) {
+      super(handsfree, config);
+      this.name = 'pose';
+
+      // Without this the loading event will happen before the first frame
+      this.hasLoadedAndRun = false;
+
+      this.palmPoints = [0, 1, 2, 5, 9, 13, 17];
+    }
+
+    loadDependencies (callback) {
+      // Just load utils on client
+      if (this.handsfree.config.isClient) {
+        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils.js`, () => {
+          this.onWarmUp(callback);
+        }, !!window.drawConnectors);
+
+        return
+      }
+
+      // Load pose
+      this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/pose/pose.js`, () => {
+        this.api = new window.Pose({locateFile: file => {
+          return `${this.handsfree.config.assetsPath}/@mediapipe/pose/${file}`
+        }});
+        this.api.setOptions(this.handsfree.config.pose);
+        this.api.onResults(results => this.dataReceived(results));
+
+        // Load the media stream
+        this.handsfree.getUserMedia(() => {
+          // Warm up before using in loop
+          if (!this.handsfree.mediapipeWarmups.isWarmingUp) {
+            this.warmUp(callback);
+          } else {
+            this.handsfree.on('mediapipeWarmedUp', () => {
+              if (!this.handsfree.mediapipeWarmups.isWarmingUp && !this.handsfree.mediapipeWarmups[this.name]) {
+                this.warmUp(callback);
+              }
+            });
+          }
+        });
+
+        // Load the hands camera module
+        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils.js`, null, !!window.drawConnectors);
+      });
+    }
+
+    /**
+     * Warms up the model
+     */
+    warmUp (callback) {
+      this.handsfree.mediapipeWarmups[this.name] = true;
+      this.handsfree.mediapipeWarmups.isWarmingUp = true;
+      this.api.send({image: this.handsfree.debug.$video}).then(() => {
+        this.handsfree.mediapipeWarmups.isWarmingUp = false;
+          this.onWarmUp(callback);
+      });
+    }
+
+    /**
+     * Called after the model has been warmed up
+     * - If we don't do this there will be too many initial hits and cause an error
+     */
+    onWarmUp (callback) {
+      this.dependenciesLoaded = true;
+      document.body.classList.add('handsfree-model-pose');                    
+      this.handsfree.emit('modelReady', this);
+      this.handsfree.emit('poseModelReady', this);
+      this.handsfree.emit('mediapipeWarmedUp', this);
+      callback && callback(this);
+    }
+    
+    /**
+     * Get data
+     */
+    async getData () {
+      this.dependenciesLoaded && await this.api.send({image: this.handsfree.debug.$video});
+    }
+    // Called through this.api.onResults
+    dataReceived (results) {
+      this.data = results;
+      this.handsfree.data.pose = results;
+      if (this.handsfree.isDebugging) {
+        this.debug(results);
+      }
+    }
+
+
+    /**
+     * Debugs the pose model
+     */
+    debug (results) {
+      this.handsfree.debug.context.pose.clearRect(0, 0, this.handsfree.debug.$canvas.pose.width, this.handsfree.debug.$canvas.pose.height);
+
+      if (results.poseLandmarks) {
+        drawConnectors(this.handsfree.debug.context.pose, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+        drawLandmarks(this.handsfree.debug.context.pose, results.poseLandmarks, {color: '#FF0000', lineWidth: 2});
+      }
+    }
+  }
+
+  class HolisticModel extends BaseModel {
+    constructor (handsfree, config) {
+      super(handsfree, config);
+      this.name = 'holistic';
+
+      // Without this the loading event will happen before the first frame
+      this.hasLoadedAndRun = false;
+
+      this.palmPoints = [0, 1, 2, 5, 9, 13, 17];
+    }
+
+    loadDependencies (callback) {
+      // Just load utils on client
+      if (this.handsfree.config.isClient) {
+        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils.js`, () => {
+          this.onWarmUp(callback);
+        }, !!window.drawConnectors);
+
+        return
+      }
+
+      // Load holistic
+      this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/holistic/holistic.js`, () => {
+        this.api = new window.Holistic({locateFile: file => {
+          return `${this.handsfree.config.assetsPath}/@mediapipe/holistic/${file}`
+        }});
+        this.api.setOptions(this.handsfree.config.holistic);
+        this.api.onResults(results => this.dataReceived(results));
+
+        // Load the media stream
+        this.handsfree.getUserMedia(() => {
+          // Warm up before using in loop
+          if (!this.handsfree.mediapipeWarmups.isWarmingUp) {
+            this.warmUp(callback);
+          } else {
+            this.handsfree.on('mediapipeWarmedUp', () => {
+              if (!this.handsfree.mediapipeWarmups.isWarmingUp && !this.handsfree.mediapipeWarmups[this.name]) {
+                this.warmUp(callback);
+              }
+            });
+          }
+        });
+
+        // Load the hands camera module
+        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils.js`, null, !!window.drawConnectors);
+      });
+    }
+
+    /**
+     * Warms up the model
+     */
+    warmUp (callback) {
+      this.handsfree.mediapipeWarmups[this.name] = true;
+      this.handsfree.mediapipeWarmups.isWarmingUp = true;
+      this.api.send({image: this.handsfree.debug.$video}).then(() => {
+        this.handsfree.mediapipeWarmups.isWarmingUp = false;
+          this.onWarmUp(callback);
+      });
+    }
+
+    /**
+     * Called after the model has been warmed up
+     * - If we don't do this there will be too many initial hits and cause an error
+     */
+    onWarmUp (callback) {
+      this.dependenciesLoaded = true;
+      document.body.classList.add('handsfree-model-holistic');                    
+      this.handsfree.emit('modelReady', this);
+      this.handsfree.emit('holisticModelReady', this);
+      this.handsfree.emit('mediapipeWarmedUp', this);
+      callback && callback(this);
+    }
+    
+    /**
+     * Get data
+     */
+    async getData () {
+      this.dependenciesLoaded && await this.api.send({image: this.handsfree.debug.$video});
+    }
+    // Called through this.api.onResults
+    dataReceived (results) {
+      this.data = results;
+      this.handsfree.data.holistic = results;
+      if (this.handsfree.isDebugging) {
+        this.debug(results);
+      }
+    }
+
+    /**
+     * Debugs the holistic model
+     */
+    debug (results) {
+      this.handsfree.debug.context.holistic.clearRect(0, 0, this.handsfree.debug.$canvas.holistic.width, this.handsfree.debug.$canvas.holistic.height);
+
+      drawConnectors(this.handsfree.debug.context.holistic, results.poseLandmarks, POSE_CONNECTIONS, {
+        color: '#0f0',
+        lineWidth: 4
+      });
+      
+      drawLandmarks(this.handsfree.debug.context.holistic, results.poseLandmarks, {
+        color: '#f00',
+        lineWidth: 2
+      });
+      
+      drawConnectors(this.handsfree.debug.context.holistic, results.faceLandmarks, FACEMESH_TESSELATION, {
+        color: '#f0f',
+        lineWidth: 1
+      });
+      
+      drawConnectors(this.handsfree.debug.context.holistic, results.leftHandLandmarks, HAND_CONNECTIONS, {
+        color: '#0f0',
+        lineWidth: 5
+      });
+      
+      drawLandmarks(this.handsfree.debug.context.holistic, results.leftHandLandmarks, {
+        color: '#f0f',
+        lineWidth: 2
+      });
+      
+      drawConnectors(this.handsfree.debug.context.holistic, results.rightHandLandmarks, HAND_CONNECTIONS, {
+        color: '#0f0',
+        lineWidth: 5
+      });
+
+      drawLandmarks(this.handsfree.debug.context.holistic, results.rightHandLandmarks, {
+        color: '#f0f',
+        lineWidth: 2
+      });    
+    }
+  }
+
+  /**
+   * 🚨 This model is not currently active
+   */
+  class HandposeModel extends BaseModel {
+    constructor (handsfree, config) {
+      super(handsfree, config);
+      this.name = 'handpose';
+
+      // Various THREE variables
+      this.three = {
+        scene: null,
+        camera: null,
+        renderer: null,
+        meshes: []
+      };
+
+      this.normalized = [];
+
+      // landmark indices that represent the palm
+      // 8 = Index finger tip
+      // 12 = Middle finger tip
+      this.palmPoints = [0, 1, 2, 5, 9, 13, 17];
+    }
+
+    loadDependencies (callback) {
+      this.loadDependency(`${this.handsfree.config.assetsPath}/three/three.min.js`, () => {
+        this.loadDependency(`${this.handsfree.config.assetsPath}/@tensorflow/tf-core.js`, () => {
+          this.loadDependency(`${this.handsfree.config.assetsPath}/@tensorflow/tf-converter.js`, () => {
+            this.loadDependency(`${this.handsfree.config.assetsPath}/@tensorflow/tf-backend-${this.handsfree.config.handpose.backend}.js`, () => {
+              this.loadDependency(`${this.handsfree.config.assetsPath}/@tensorflow-models/handpose/handpose.js`, () => {
+                this.handsfree.getUserMedia(async () => {
+                  await window.tf.setBackend(this.handsfree.config.handpose.backend);
+                  this.api = await handpose.load(this.handsfree.config.handpose.model);
+            
+                  this.setup3D();
+            
+                  callback && callback(this);
+                  this.dependenciesLoaded = true;
+                  this.handsfree.emit('modelReady', this);
+                  this.handsfree.emit('handposeModelReady', this);
+                  document.body.classList.add('handsfree-model-handpose');
+                });
+              });
+            });
+          });
+        }, !!window.tf);
+      }, !!window.THREE);
+    }
+
+    /**
+     * Runs inference and sets up other data
+     */
+    async getData () {
+      if (!this.handsfree.debug.$video) return
+
+      const predictions = await this.api.estimateHands(this.handsfree.debug.$video);
+
+      this.handsfree.data.handpose = this.data = {
+        ...predictions[0],
+        normalized: this.normalized,
+        meshes: this.three.meshes
+      };
+
+      if (predictions[0]) {
+        this.updateMeshes(this.data);
+      }
+      
+      this.three.renderer.render(this.three.scene, this.three.camera);
+      return this.data
+    }
+
+    /**
+     * Sets up the 3D environment
+     */
+    setup3D () {
+      // Setup Three
+      this.three = {
+        scene: new window.THREE.Scene(),
+        camera: new window.THREE.PerspectiveCamera(90, window.outerWidth / window.outerHeight, 0.1, 1000),
+        renderer: new THREE.WebGLRenderer({
+          alpha: true,
+          canvas: this.handsfree.debug.$canvas.handpose
+        }),
+        meshes: []
+      };
+      this.three.renderer.setSize(window.outerWidth, window.outerHeight);
+      this.three.camera.position.z = this.handsfree.debug.$video.videoWidth / 4;
+      this.three.camera.lookAt(new window.THREE.Vector3(0, 0, 0));
+
+      // Camera plane
+      this.three.screen = new window.THREE.Mesh(
+        new window.THREE.BoxGeometry(window.outerWidth, window.outerHeight, 1),
+        new window.THREE.MeshNormalMaterial()
+      );
+      this.three.screen.position.z = 300;
+      this.three.scene.add(this.three.screen);
+
+      // Camera raycaster
+      this.three.raycaster = new window.THREE.Raycaster();
+      this.three.arrow = new window.THREE.ArrowHelper(this.three.raycaster.ray.direction, this.three.raycaster.ray.origin, 300, 0xff0000);
+      this.three.scene.add(this.three.arrow);
+
+      // Create model representations (one for each keypoint)
+      for (let i = 0; i < 21; i++){
+        const {isPalm} = this.getLandmarkProperty(i);
+      
+        const obj = new window.THREE.Object3D(); // a parent object to facilitate rotation/scaling
+      
+        // we make each bone a cylindrical shape, but you can use your own models here too
+        const geometry = new window.THREE.CylinderGeometry(isPalm ? 5 : 10, 5, 1);
+      
+        let material = new window.THREE.MeshNormalMaterial();
+      
+        const mesh = new window.THREE.Mesh(geometry, material);
+        mesh.rotation.x = Math.PI / 2;
+      
+        obj.add(mesh);
+        this.three.scene.add(obj);
+        this.three.meshes.push(obj);
+
+        // uncomment this to help identify joints
+        // if (i === 4) {
+        //   mesh.material.transparent = true
+        //   mesh.material.opacity = 0
+        // }
+      }
+
+      // Create center of palm
+      const obj = new window.THREE.Object3D();
+      const geometry = new window.THREE.CylinderGeometry(5, 5, 1);
+      let material = new window.THREE.MeshNormalMaterial();
+    
+      const mesh = new window.THREE.Mesh(geometry, material);
+      mesh.rotation.x = Math.PI / 2;
+    
+      this.three.centerPalmObj = obj;
+      obj.add(mesh);
+      this.three.scene.add(obj);
+      this.three.meshes.push(obj);    
+      this.three.screen.visible = false;
+    }
+
+    // compute some metadata given a landmark index
+    // - is the landmark a palm keypoint or a finger keypoint?
+    // - what's the next landmark to connect to if we're drawing a bone?
+    getLandmarkProperty (i) {
+      const palms = [0, 1, 2, 5, 9, 13, 17]; //landmark indices that represent the palm
+
+      const idx = palms.indexOf(i);
+      const isPalm = idx != -1;
+      let next; // who to connect with?
+
+      if (!isPalm) { // connect with previous finger landmark if it's a finger landmark
+        next = i - 1;
+      }else { // connect with next palm landmark if it's a palm landmark
+        next = palms[(idx + 1) % palms.length];
+      }
+
+      return {isPalm, next}
+    }
+
+    /**
+     * update threejs object position and orientation from the detected hand pose
+     * threejs has a "scene" model, so we don't have to specify what to draw each frame,
+     * instead we put objects at right positions and threejs renders them all
+     * @param {*} hand 
+     */
+    updateMeshes (hand) {
+      for (let i = 0; i < this.three.meshes.length - 1 /* palmbase */; i++) {
+        const {next} = this.getLandmarkProperty(i);
+    
+        const p0 = this.webcam2space(...hand.landmarks[i]);  // one end of the bone
+        const p1 = this.webcam2space(...hand.landmarks[next]);  // the other end of the bone
+    
+        // compute the center of the bone (midpoint)
+        const mid = p0.clone().lerp(p1, 0.5);
+        this.three.meshes[i].position.set(mid.x, mid.y, mid.z);
+        this.normalized[i] = [
+          this.handsfree.normalize(p0.x, this.handsfree.debug.$video.videoWidth / -2, this.handsfree.debug.$video.videoWidth / 2),
+          this.handsfree.normalize(p0.y, this.handsfree.debug.$video.videoHeight / -2, this.handsfree.debug.$video.videoHeight / 2),
+          this.three.meshes[i].position.z
+        ];
+    
+        // compute the length of the bone
+        this.three.meshes[i].scale.z = p0.distanceTo(p1);
+
+        // compute orientation of the bone
+        this.three.meshes[i].lookAt(p1);
+
+        if (i === 8) {
+          this.three.arrow.position.set(mid.x, mid.y, mid.z);
+          const direction = new window.THREE.Vector3().subVectors(p0, mid);
+          this.three.arrow.setDirection(direction.normalize());
+          this.three.arrow.setLength(800);
+          this.three.arrow.direction = direction;
+        }
+      }
+
+      this.updateCenterPalmMesh(hand);
+    }
+
+    /**
+     * Update the palm
+     */
+    updateCenterPalmMesh (hand) {
+      let points = [];
+      let mid = {
+        x: 0,
+        y: 0,
+        z: 0
+      };
+
+      // Get position for the palm
+      this.palmPoints.forEach((i, n) => {
+        points.push(this.webcam2space(...hand.landmarks[i]));
+        mid.x += points[n].x;
+        mid.y += points[n].y;
+        mid.z += points[n].z;
+      });
+
+      mid.x = mid.x / this.palmPoints.length;
+      mid.y = mid.y / this.palmPoints.length;
+      mid.z = mid.z / this.palmPoints.length;
+      
+      this.three.centerPalmObj.position.set(mid.x, mid.y, mid.z);
+      this.three.centerPalmObj.scale.z = 10;
+      this.three.centerPalmObj.rotation.x = this.three.meshes[12].rotation.x - Math.PI / 2;
+      this.three.centerPalmObj.rotation.y = -this.three.meshes[12].rotation.y;
+      this.three.centerPalmObj.rotation.z = this.three.meshes[12].rotation.z;
+    }
+    
+    // transform webcam coordinates to threejs 3d coordinates
+    webcam2space (x, y, z) {
+      return new window.THREE.Vector3(
+        (x-this.handsfree.debug.$video.videoWidth / 2),
+        -(y-this.handsfree.debug.$video.videoHeight / 2), // in threejs, +y is up
+        -z
+      )
     }
   }
 
@@ -235,453 +959,6 @@
         morphs[6] > this.handsfree.config.weboji.morphs.threshold.mouthOpen;
 
       return state
-    }
-  }
-
-  class HandsModel extends BaseModel {
-    constructor (handsfree, config) {
-      super(handsfree, config);
-      this.name = 'hands';
-
-      this.palmPoints = [0, 1, 2, 5, 9, 13, 17];
-    }
-
-    loadDependencies (callback) {
-      // Just load utils on client
-      if (this.handsfree.config.isClient) {
-        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils/node_modules/@mediapipe/drawing_utils/drawing_utils.js`, () => {
-          this.onWarmUp(callback);
-        });
-
-        return
-      }
-
-      // Load hands
-      this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/hands/node_modules/@mediapipe/hands/hands.js`, () => {
-        // Configure model
-        this.api = new window.Hands({locateFile: file => {
-          return `${this.handsfree.config.assetsPath}/@mediapipe/hands/node_modules/@mediapipe/hands/${file}`
-        }});
-        this.api.setOptions(this.handsfree.config.hands);
-        this.api.onResults(results => this.dataReceived(results));
-
-        // Load the media stream
-        this.handsfree.getUserMedia(() => {
-          // Warm up before using in loop
-          if (!this.handsfree.mediapipeWarmups.isWarmingUp) {
-            this.warmUp(callback);
-          } else {
-            this.handsfree.on('mediapipeWarmedUp', () => {
-              if (!this.handsfree.mediapipeWarmups.isWarmingUp && !this.handsfree.mediapipeWarmups[this.name]) {
-                this.warmUp(callback);
-              }
-            });
-          }
-        });
-
-        // Load the hands camera module
-        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils/node_modules/@mediapipe/drawing_utils/drawing_utils.js`);
-      });
-    }
-
-    /**
-     * Warms up the model
-     */
-    warmUp (callback) {
-      this.handsfree.mediapipeWarmups[this.name] = true;
-      this.handsfree.mediapipeWarmups.isWarmingUp = true;
-      this.api.send({image: this.handsfree.debug.$video}).then(() => {
-        this.handsfree.mediapipeWarmups.isWarmingUp = false;
-          this.onWarmUp(callback);
-      });
-    }
-
-    /**
-     * Called after the model has been warmed up
-     * - If we don't do this there will be too many initial hits and cause an error
-     */
-    onWarmUp (callback) {
-      this.dependenciesLoaded = true;
-      document.body.classList.add('handsfree-model-hands');                    
-      this.handsfree.emit('modelReady', this);
-      this.handsfree.emit('handsModelReady', this);
-      this.handsfree.emit('mediapipeWarmedUp', this);
-      callback && callback(this);
-    }
-
-    /**
-     * Get data
-     */
-    async getData () {
-      this.dependenciesLoaded && await this.api.send({image: this.handsfree.debug.$video});
-    }
-    // Called through this.api.onResults
-    dataReceived (results) {
-      this.data = results;
-      this.handsfree.data.hands = results;
-      if (this.handsfree.config.showDebug) {
-        this.debug(results);
-      }
-    }
-
-    /**
-     * Debugs the hands model
-     */
-    debug (results) {
-      // Bail if drawing helpers haven't loaded
-      if (typeof drawConnectors === 'undefined') return
-      
-      // Clear the canvas
-      this.handsfree.debug.context.hands.clearRect(0, 0, this.handsfree.debug.$canvas.hands.width, this.handsfree.debug.$canvas.hands.height);
-      
-      // Draw skeletons
-      if (results.multiHandLandmarks) {
-        for (const landmarks of results.multiHandLandmarks) {
-          drawConnectors(this.handsfree.debug.context.hands, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 5});
-          drawLandmarks(this.handsfree.debug.context.hands, landmarks, {color: '#FF0000', lineWidth: 2});
-        }
-      }
-    }
-  }
-
-  class FacemeshModel extends BaseModel {
-    constructor (handsfree, config) {
-      super(handsfree, config);
-      this.name = 'facemesh';
-      this.isWarmedUp = false;
-    }
-
-    loadDependencies (callback) {
-      // Just load utils on client
-      if (this.handsfree.config.isClient) {
-        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils/node_modules/@mediapipe/drawing_utils/drawing_utils.js`, () => {
-          this.onWarmUp(callback);
-        });
-
-        return
-      }
-      
-      // Load facemesh
-      this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/face_mesh/node_modules/@mediapipe/face_mesh/face_mesh.js`, () => {
-        // Configure model
-        this.api = new window.FaceMesh({locateFile: file => {
-          return `${this.handsfree.config.assetsPath}/@mediapipe/face_mesh/node_modules/@mediapipe/face_mesh/${file}`
-        }});
-        this.api.setOptions(this.handsfree.config.facemesh);
-        this.api.onResults(results => this.dataReceived(results));
-
-        // Load the media stream
-        this.handsfree.getUserMedia(() => {
-          // Warm up before using in loop
-          if (!this.handsfree.mediapipeWarmups.isWarmingUp) {
-            this.warmUp(callback);
-          } else {
-            this.handsfree.on('mediapipeWarmedUp', () => {
-              if (!this.handsfree.mediapipeWarmups.isWarmingUp && !this.handsfree.mediapipeWarmups[this.name]) {
-                this.warmUp(callback);
-              }
-            });
-          }
-        });
-
-        // Load the hands camera module
-        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils/node_modules/@mediapipe/drawing_utils/drawing_utils.js`);
-      });
-    }
-
-    /**
-     * Warms up the model
-     */
-    warmUp (callback) {
-      this.handsfree.mediapipeWarmups[this.name] = true;
-      this.handsfree.mediapipeWarmups.isWarmingUp = true;
-      this.api.send({image: this.handsfree.debug.$video}).then(() => {
-        this.handsfree.mediapipeWarmups.isWarmingUp = false;
-          this.onWarmUp(callback);
-      });
-    }
-
-    /**
-     * Called after the model has been warmed up
-     * - If we don't do this there will be too many initial hits and cause an error
-     */
-    onWarmUp (callback) {
-      this.dependenciesLoaded = true;
-      document.body.classList.add('handsfree-model-facemesh');                    
-      this.handsfree.emit('modelReady', this);
-      this.handsfree.emit('facemeshModelReady', this);
-      this.handsfree.emit('mediapipeWarmedUp', this);
-      callback && callback(this);
-    }
-    
-    /**
-     * Get data
-     */
-    async getData () {
-      this.dependenciesLoaded && await this.api.send({image: this.handsfree.debug.$video});
-    }
-    // Called through this.api.onResults
-    dataReceived (results) {
-      this.data = results;
-      this.handsfree.data.facemesh = results;
-      if (this.handsfree.config.showDebug) {
-        this.debug(results);
-      }
-    }
-
-    /**
-     * Debugs the facemesh model
-     */
-    debug (results) {
-      // Bail if drawing helpers haven't loaded
-      if (typeof drawConnectors === 'undefined') return
-      
-      this.handsfree.debug.context.facemesh.clearRect(0, 0, this.handsfree.debug.$canvas.facemesh.width, this.handsfree.debug.$canvas.facemesh.height);
-
-      if (results.multiFaceLandmarks) {
-        for (const landmarks of results.multiFaceLandmarks) {
-          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 1});
-          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_RIGHT_EYE, {color: '#FF3030'});
-          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_RIGHT_EYEBROW, {color: '#FF3030'});
-          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_LEFT_EYE, {color: '#30FF30'});
-          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_LEFT_EYEBROW, {color: '#30FF30'});
-          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_FACE_OVAL, {color: '#E0E0E0'});
-          drawConnectors(this.handsfree.debug.context.facemesh, landmarks, FACEMESH_LIPS, {color: '#E0E0E0'});
-        }
-      }
-    }
-  }
-
-  class PoseModel extends BaseModel {
-    constructor (handsfree, config) {
-      super(handsfree, config);
-      this.name = 'pose';
-
-      // Without this the loading event will happen before the first frame
-      this.hasLoadedAndRun = false;
-
-      this.palmPoints = [0, 1, 2, 5, 9, 13, 17];
-    }
-
-    loadDependencies (callback) {
-      // Just load utils on client
-      if (this.handsfree.config.isClient) {
-        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils/node_modules/@mediapipe/drawing_utils/drawing_utils.js`, () => {
-          this.onWarmUp(callback);
-        });
-
-        return
-      }
-
-      // Load pose
-      this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/pose/node_modules/@mediapipe/pose/pose.js`, () => {
-        this.api = new window.Pose({locateFile: file => {
-          return `${this.handsfree.config.assetsPath}/@mediapipe/pose/node_modules/@mediapipe/pose/${file}`
-        }});
-        this.api.setOptions(this.handsfree.config.pose);
-        this.api.onResults(results => this.dataReceived(results));
-
-        // Load the media stream
-        this.handsfree.getUserMedia(() => {
-          // Warm up before using in loop
-          if (!this.handsfree.mediapipeWarmups.isWarmingUp) {
-            this.warmUp(callback);
-          } else {
-            this.handsfree.on('mediapipeWarmedUp', () => {
-              if (!this.handsfree.mediapipeWarmups.isWarmingUp && !this.handsfree.mediapipeWarmups[this.name]) {
-                this.warmUp(callback);
-              }
-            });
-          }
-        });
-
-        // Load the hands camera module
-        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils/node_modules/@mediapipe/drawing_utils/drawing_utils.js`);
-      });
-    }
-
-    /**
-     * Warms up the model
-     */
-    warmUp (callback) {
-      this.handsfree.mediapipeWarmups[this.name] = true;
-      this.handsfree.mediapipeWarmups.isWarmingUp = true;
-      this.api.send({image: this.handsfree.debug.$video}).then(() => {
-        this.handsfree.mediapipeWarmups.isWarmingUp = false;
-          this.onWarmUp(callback);
-      });
-    }
-
-    /**
-     * Called after the model has been warmed up
-     * - If we don't do this there will be too many initial hits and cause an error
-     */
-    onWarmUp (callback) {
-      this.dependenciesLoaded = true;
-      document.body.classList.add('handsfree-model-pose');                    
-      this.handsfree.emit('modelReady', this);
-      this.handsfree.emit('poseModelReady', this);
-      this.handsfree.emit('mediapipeWarmedUp', this);
-      callback && callback(this);
-    }
-    
-    /**
-     * Get data
-     */
-    async getData () {
-      this.dependenciesLoaded && await this.api.send({image: this.handsfree.debug.$video});
-    }
-    // Called through this.api.onResults
-    dataReceived (results) {
-      this.data = results;
-      this.handsfree.data.pose = results;
-      if (this.handsfree.config.showDebug) {
-        this.debug(results);
-      }
-    }
-
-
-    /**
-     * Debugs the pose model
-     */
-    debug (results) {
-      this.handsfree.debug.context.pose.clearRect(0, 0, this.handsfree.debug.$canvas.pose.width, this.handsfree.debug.$canvas.pose.height);
-
-      if (results.poseLandmarks) {
-        drawConnectors(this.handsfree.debug.context.pose, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
-        drawLandmarks(this.handsfree.debug.context.pose, results.poseLandmarks, {color: '#FF0000', lineWidth: 2});
-      }
-    }
-  }
-
-  class HolisticModel extends BaseModel {
-    constructor (handsfree, config) {
-      super(handsfree, config);
-      this.name = 'holistic';
-
-      // Without this the loading event will happen before the first frame
-      this.hasLoadedAndRun = false;
-
-      this.palmPoints = [0, 1, 2, 5, 9, 13, 17];
-    }
-
-    loadDependencies (callback) {
-      // Just load utils on client
-      if (this.handsfree.config.isClient) {
-        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils/node_modules/@mediapipe/drawing_utils/drawing_utils.js`, () => {
-          this.onWarmUp(callback);
-        });
-
-        return
-      }
-
-      // Load holistic
-      this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/holistic/node_modules/@mediapipe/holistic/holistic.js`, () => {
-        this.api = new window.Holistic({locateFile: file => {
-          return `${this.handsfree.config.assetsPath}/@mediapipe/holistic/node_modules/@mediapipe/holistic/${file}`
-        }});
-        this.api.setOptions(this.handsfree.config.holistic);
-        this.api.onResults(results => this.dataReceived(results));
-
-        // Load the media stream
-        this.handsfree.getUserMedia(() => {
-          // Warm up before using in loop
-          if (!this.handsfree.mediapipeWarmups.isWarmingUp) {
-            this.warmUp(callback);
-          } else {
-            this.handsfree.on('mediapipeWarmedUp', () => {
-              if (!this.handsfree.mediapipeWarmups.isWarmingUp && !this.handsfree.mediapipeWarmups[this.name]) {
-                this.warmUp(callback);
-              }
-            });
-          }
-        });
-
-        // Load the hands camera module
-        this.loadDependency(`${this.handsfree.config.assetsPath}/@mediapipe/drawing_utils/node_modules/@mediapipe/drawing_utils/drawing_utils.js`);
-      });
-    }
-
-    /**
-     * Warms up the model
-     */
-    warmUp (callback) {
-      this.handsfree.mediapipeWarmups[this.name] = true;
-      this.handsfree.mediapipeWarmups.isWarmingUp = true;
-      this.api.send({image: this.handsfree.debug.$video}).then(() => {
-        this.handsfree.mediapipeWarmups.isWarmingUp = false;
-          this.onWarmUp(callback);
-      });
-    }
-
-    /**
-     * Called after the model has been warmed up
-     * - If we don't do this there will be too many initial hits and cause an error
-     */
-    onWarmUp (callback) {
-      this.dependenciesLoaded = true;
-      document.body.classList.add('handsfree-model-holistic');                    
-      this.handsfree.emit('modelReady', this);
-      this.handsfree.emit('holisticModelReady', this);
-      this.handsfree.emit('mediapipeWarmedUp', this);
-      callback && callback(this);
-    }
-    
-    /**
-     * Get data
-     */
-    async getData () {
-      this.dependenciesLoaded && await this.api.send({image: this.handsfree.debug.$video});
-    }
-    // Called through this.api.onResults
-    dataReceived (results) {
-      this.data = results;
-      this.handsfree.data.holistic = results;
-      if (this.handsfree.config.showDebug) {
-        this.debug(results);
-      }
-    }
-
-    /**
-     * Debugs the holistic model
-     */
-    debug (results) {
-      this.handsfree.debug.context.holistic.clearRect(0, 0, this.handsfree.debug.$canvas.holistic.width, this.handsfree.debug.$canvas.holistic.height);
-
-      drawConnectors(this.handsfree.debug.context.holistic, results.poseLandmarks, POSE_CONNECTIONS, {
-        color: '#0f0',
-        lineWidth: 4
-      });
-      
-      drawLandmarks(this.handsfree.debug.context.holistic, results.poseLandmarks, {
-        color: '#f00',
-        lineWidth: 2
-      });
-      
-      drawConnectors(this.handsfree.debug.context.holistic, results.faceLandmarks, FACEMESH_TESSELATION, {
-        color: '#f0f',
-        lineWidth: 1
-      });
-      
-      drawConnectors(this.handsfree.debug.context.holistic, results.leftHandLandmarks, HAND_CONNECTIONS, {
-        color: '#0f0',
-        lineWidth: 5
-      });
-      
-      drawLandmarks(this.handsfree.debug.context.holistic, results.leftHandLandmarks, {
-        color: '#f0f',
-        lineWidth: 2
-      });
-      
-      drawConnectors(this.handsfree.debug.context.holistic, results.rightHandLandmarks, HAND_CONNECTIONS, {
-        color: '#0f0',
-        lineWidth: 5
-      });
-
-      drawLandmarks(this.handsfree.debug.context.holistic, results.rightHandLandmarks, {
-        color: '#f0f',
-        lineWidth: 2
-      });    
     }
   }
 
@@ -3418,7 +3695,7 @@
    */
   var defaultConfig = {
     // Use CDN by default
-    assetsPath: 'https://unpkg.com/handsfree@8.0.10/build/lib/assets',
+    assetsPath: 'https://unpkg.com/handsfree@8.2.2/build/lib/assets',
     
     // This will load everything but the models. This is useful when you want to use run inference
     // on another device or context but run the plugins on the current device
@@ -3435,6 +3712,12 @@
           height: 720
         },
         hands: {
+          // The canvas element to hold the skeletons and keypoints for hand model
+          $el: null,
+          width: 1280,
+          height: 720
+        },
+        handpose: {
           // The canvas element to hold the skeletons and keypoints for hand model
           $el: null,
           width: 1280,
@@ -3587,6 +3870,27 @@
       // Minimum confidence [0 - 1] for the pose tracker to be considered detected
       // Higher values are more robust at the expense of higher latency
       minTrackingConfidence: 0.5
+    },
+
+    handpose: {
+      enabled: false,
+
+      // The backend to use: 'webgl' or 'wasm'
+      // 🚨 Currently only webgl is supported
+      backend: 'webgl',
+
+      // How many frames to go without running the bounding box detector. 
+      // Set to a lower value if you want a safety net in case the mesh detector produces consistently flawed predictions.
+      maxContinuousChecks: Infinity,
+
+      // Threshold for discarding a prediction
+      detectionConfidence: 0.8,
+
+      // A float representing the threshold for deciding whether boxes overlap too much in non-maximum suppression. Must be between [0, 1]
+      iouThreshold: 0.3,
+
+      // A threshold for deciding when to remove boxes based on score in non-maximum suppression.
+      scoreThreshold: 0.75
     },
 
     plugin: {}
@@ -6255,8 +6559,8 @@
         x: 0,
         y: 0,
         // Calibrate the head (in degrees)
-        pitch: -15,
-        yaw: -12,
+        pitch: 10,
+        yaw: 0,
         roll: 0
       },
 
@@ -6656,18 +6960,16 @@
     enabled: false,
 
     // Number of frames the current element is the same as the last
-    numFramesFocused: 0,
+    numFramesFocused: [0, 0, 0, 0],
     // The current scrollable target
-    $target: null,
+    $target: [null, null, null, null],
 
     // The original grab point
-    origScrollTop: 0,
+    origScrollLeft: [0, 0, 0, 0],
+    origScrollTop: [0, 0, 0, 0],
 
     // The tweened scrollTop, used to smoothen out scroll
-    tweenScroll: {y: 0},
-
-    // Number of frames that has passed since the last grab
-    framesSinceLastGrab: 0,
+    tweenScroll: [{x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}],
 
     config: {
       // Number of frames over the same element before activating that element
@@ -6683,6 +6985,153 @@
       speed: 2
     },
 
+    /**
+     * Scroll the page when the cursor goes above/below the threshold
+     */
+    onFrame ({hands}) {
+      // Wait for other plugins to update
+      setTimeout(() => {
+        if (!hands.pointer) return
+        const height = this.handsfree.debug.$canvas.hands.height;
+        const width = this.handsfree.debug.$canvas.hands.width;
+
+        hands.pointer.forEach((pointer, n) => {
+          // @fixme Get rid of n > origPinch.length
+          if (!pointer.isVisible || n > hands.origPinch.length) return
+
+          // Start scroll
+          if (hands.pinchState[n][0] === 'start') {
+            let $potTarget = document.elementFromPoint(pointer.x, pointer.y);
+
+            this.$target[n] = this.getTarget($potTarget);
+            this.origScrollTop[n] = this.getTargetScrollTop(this.$target[n]);
+            this.origScrollLeft[n] = this.getTargetScrollLeft(this.$target[n]);
+            this.handsfree.TweenMax.killTweensOf(this.tweenScroll[n]);
+          }
+
+          if (hands.pinchState[n][0] === 'held' && this.$target[n]) {
+            this.handsfree.TweenMax.to(this.tweenScroll[n], 1, {
+              x: this.origScrollLeft[n] - (hands.origPinch[n][0].x - hands.curPinch[n][0].x) * width,
+              y: this.origScrollTop[n] + (hands.origPinch[n][0].y - hands.curPinch[n][0].y) * height,
+              overwrite: true,
+              ease: 'linear.easeNone',
+              immediateRender: true  
+            });
+
+            this.$target[n].scrollTo(this.tweenScroll[n].x, this.tweenScroll[n].y);
+          }
+        });
+      });
+    },
+
+    /**
+     * Finds the closest scroll area
+     */
+    getTarget ($potTarget) {
+      const styles = $potTarget && $potTarget.getBoundingClientRect ? getComputedStyle($potTarget) : {};
+
+      if ($potTarget && $potTarget.scrollHeight > $potTarget.clientHeight &&
+        (styles.overflow === 'auto' ||
+          styles.overflow === 'auto scroll' ||
+          styles.overflowY === 'auto' ||
+          styles.overflowY === 'auto scroll')
+      ) {
+        return $potTarget
+      } else {
+        if ($potTarget && $potTarget.parentElement) {
+          return this.getTarget($potTarget.parentElement)
+        } else {
+          return window
+        }
+      }
+    },
+
+    /**
+     * Gets the scrolltop, taking account the window object
+     */
+    getTargetScrollLeft ($target) {
+      return $target.scrollX || $target.scrollLeft || 0
+    },
+
+    /**
+     * Gets the scrolltop, taking account the window object
+     */
+    getTargetScrollTop ($target) {
+      return $target.scrollY || $target.scrollTop || 0
+    }
+  };
+
+  var pluginPinchers = {
+    models: 'hands',
+    enabled: true,
+    tags: ['core'],
+
+    // Index of fingertips
+    fingertipIndex: [8, 12, 16, 20],
+
+    // Number of frames the current element is the same as the last
+    // [left, right]
+    // [index, middle, ring, pinky]
+    numFramesFocused: [[0, 0, 0, 0,], [0, 0, 0, 0]],
+
+    // Whether the fingers are touching
+    thresholdMet: [[0, 0, 0, 0,], [0, 0, 0, 0]],
+    framesSinceLastGrab: [[0, 0, 0, 0,], [0, 0, 0, 0]],
+
+    // The original grab point for each finger
+    origPinch: [
+      [{x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}],
+      [{x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}]
+    ],
+    curPinch: [
+      [{x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}],
+      [{x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}]
+    ],
+
+    // Just downel
+    pinchDowned: [
+      [0, 0, 0, 0],
+      [0, 0, 0, 0]
+    ],
+    pinchDown: [
+      [false, false, false, false],
+      [false, false, false, false]
+    ],
+    pinchUp: [
+      [false, false, false, false],
+      [false, false, false, false]
+    ],
+
+    // The tweened scrollTop, used to smoothen out scroll
+    // [[leftHand], [rightHand]]
+    tween: [
+      [{x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}],
+      [{x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}]
+    ],
+
+    // Number of frames that has passed since the last grab
+    numFramesFocused: [[0, 0, 0, 0,], [0, 0, 0, 0]],
+
+    // Number of frames mouse has been downed
+    mouseDowned: 0,
+    // Is the mouse up?
+    mouseUp: false,
+    // Whether one of the morph confidences have been met
+    mouseThresholdMet: false,
+
+    config: {
+      // Number of frames over the same element before activating that element
+      framesToFocus: 10,
+
+      // Number of pixels the middle and thumb tips must be near each other to drag
+      threshold: 50,
+
+      // Number of frames where a hold is not registered before releasing a drag
+      numThresholdErrorFrames: 5,
+
+      maxMouseDownedFrames: 1
+    },
+
     onUse () {
       this.$target = window;
     },
@@ -6692,42 +7141,273 @@
      */
     onFrame ({hands}) {
       if (!hands.multiHandLandmarks) return
+
       const height = this.handsfree.debug.$canvas.hands.height;
+      const leftVisible = hands.multiHandedness.some(hand => hand.label === 'Right');
+      const rightVisible = hands.multiHandedness.some(hand => hand.label === 'Left');
       
       // Detect if the threshold for clicking is met with specific morphs
-      const a = hands.multiHandLandmarks[0][4].x - hands.multiHandLandmarks[0][8].x;
-      const b = hands.multiHandLandmarks[0][4].y - hands.multiHandLandmarks[0][8].y;
-      const c = Math.sqrt(a*a + b*b) * height;
-      this.thresholdMet = c < this.config.threshold;
-
-      // Set the original grab point
-      if (this.thresholdMet) {
-        if (this.framesSinceLastGrab > this.config.numThresholdErrorFrames) {
-          this.origScrollTop = this.getTargetScrollTop() + hands.multiHandLandmarks[0][4].y * height * this.config.speed;
-          this.handsfree.TweenMax.killTweensOf(this.tweenScroll);
-        }
-        this.framesSinceLastGrab = 0;
-      }
-      ++this.framesSinceLastGrab;
-      
-      // Scroll
-      if (this.framesSinceLastGrab < this.config.numThresholdErrorFrames) {
-        this.handsfree.TweenMax.to(this.tweenScroll, 1, {
-          y: this.origScrollTop - hands.multiHandLandmarks[0][4].y * height * this.config.speed,
-          overwrite: true,
-          ease: 'linear.easeNone',
-          immediateRender: true  
-        });
+      for (let n = 0; n < hands.multiHandLandmarks.length; n++) {
+        // Set the hand index
+        let hand = hands.multiHandedness[n].label === 'Right' ? 0 : 1;
         
-        this.$target.scrollTo(0, this.tweenScroll.y);
+        for (let finger = 0; finger < 4; finger++) {
+          // Check if fingers are touching
+          const a = hands.multiHandLandmarks[n][4].x - hands.multiHandLandmarks[n][this.fingertipIndex[finger]].x;
+          const b = hands.multiHandLandmarks[n][4].y - hands.multiHandLandmarks[n][this.fingertipIndex[finger]].y;
+          const c = Math.sqrt(a*a + b*b) * height;
+          const thresholdMet = this.thresholdMet[hand][finger] = c < this.config.threshold;
+
+          if (thresholdMet) {
+            // Set the current pinch
+            this.curPinch[hand][finger] = hands.multiHandLandmarks[n][4];
+            
+            // Store the original pinch
+            if (this.framesSinceLastGrab[hand][finger] > this.config.numThresholdErrorFrames) {
+              this.origPinch[hand][finger] = hands.multiHandLandmarks[n][4];
+              this.handsfree.TweenMax.killTweensOf(this.tween[hand][finger]);
+            }
+            this.framesSinceLastGrab[hand][finger] = 0;
+          }
+          ++this.framesSinceLastGrab[hand][finger];
+        }
+      }
+
+      // Update the hands object
+      hands.origPinch = this.origPinch;
+      hands.curPinch = this.curPinch;
+      this.handsfree.data.hands = this.getPinchStates(hands, leftVisible, rightVisible);
+    },
+
+    /**
+     * Check if we are "mouse clicking"
+     */
+    getPinchStates (hands, leftVisible, rightVisible) {
+      const visible = [leftVisible, rightVisible];
+
+      // Make sure states are available
+      hands.pinchState = [
+        ['', '', '', ''],
+        ['', '', '', '']
+      ];
+      
+      // Loop through every hand and finger
+      for (let hand = 0; hand < 2; hand++) {
+        for (let finger = 0; finger < 4; finger++) {
+          // Click
+          if (visible[hand] && this.thresholdMet[hand][finger]) {
+            this.pinchDowned[hand][finger]++;
+            document.body.classList.add(`handsfree-finger-pinched-${hand}-${finger}`, `handsfree-finger-pinched-${finger}`);
+          } else {
+            this.pinchUp[hand][finger] = this.pinchDowned[hand][finger];
+            this.pinchDowned[hand][finger] = 0;
+            document.body.classList.remove(`handsfree-finger-pinched-${hand}-${finger}`, `handsfree-finger-pinched-${finger}`);
+          }
+          
+          // Set the state
+          if (this.pinchDowned[hand][finger] > 0 && this.pinchDowned[hand][finger] <= this.config.maxMouseDownedFrames) {
+            hands.pinchState[hand][finger] = 'start';
+          } else if (this.pinchDowned[hand][finger] > this.config.maxMouseDownedFrames) {
+            hands.pinchState[hand][finger] = 'held';
+          } else if (this.pinchUp[hand][finger]) {
+            hands.pinchState[hand][finger] = 'released';
+          } else {
+            hands.pinchState[hand][finger] = '';
+          }
+
+          // Emit an event
+          if (hands.pinchState[hand][finger]) {
+            // Specific hand
+            this.handsfree.emit(`finger-pinched-${hand}-${finger}`, {
+              event: hands.pinchState[hand][finger],
+              origPinch: hands.origPinch[hand][finger],
+              curPinch: hands.curPinch[hand][finger]
+            });
+            this.handsfree.emit(`finger-pinched-${hands.pinchState[hand][finger]}-${hand}-${finger}`, {
+              event: hands.pinchState[hand][finger],
+              origPinch: hands.origPinch[hand][finger],
+              curPinch: hands.curPinch[hand][finger]
+            });
+            // Any hand
+            this.handsfree.emit(`finger-pinched-${finger}`, {
+              event: hands.pinchState[hand][finger],
+              origPinch: hands.origPinch[hand][finger],
+              curPinch: hands.curPinch[hand][finger]
+            });
+            this.handsfree.emit(`finger-pinched-${hands.pinchState[hand][finger]}-${finger}`, {
+              event: hands.pinchState[hand][finger],
+              origPinch: hands.origPinch[hand][finger],
+              curPinch: hands.curPinch[hand][finger]
+            });
+          }
+        }
+      }
+
+      return hands
+    }
+  };
+
+  /**
+   * Move a pointer with your palm
+   */
+  var pluginPalmPointers = {
+    models: 'hands',
+    tags: ['browser'],
+    enabled: false,
+
+    // The pointer element
+    $pointer: [],
+    arePointersVisible: true,
+
+    // Pointers position
+    pointer: [
+      { x: -20, y: -20, isVisible: false },
+      { x: -20, y: -20, isVisible: false },
+      { x: -20, y: -20, isVisible: false },
+      { x: -20, y: -20, isVisible: false }
+    ],
+
+    // Used to smoothen out the pointer
+    tween: [
+      {x: -20, y: -20},
+      {x: -20, y: -20},
+      {x: -20, y: -20},
+      {x: -20, y: -20},
+    ],
+
+    config: {
+      offset: {
+        x: 0,
+        y: 0
+      },
+
+      speed: {
+        x: 1,
+        y: 1
       }
     },
 
     /**
-     * Gets the scrolltop, taking account the window object
+     * Create and toggle pointers
      */
-    getTargetScrollTop () {
-      return this.$target.scrollY || this.$target.scrollTop || 0
+    onUse () {
+      for (let i = 0; i < 4; i++) {
+        const $pointer = document.createElement('div');
+        $pointer.classList.add('handsfree-pointer', 'handsfree-pointer-palm', 'handsfree-hide-when-started-without-hands');
+        document.body.appendChild($pointer);
+        this.$pointer[i] = $pointer;
+      }
+      
+      if (this.enabled && this.arePointersVisible) {
+        this.showPointers();
+      } else {
+        this.hidePointers();
+      }
+    },
+
+    /**
+     * Show pointers on enable
+     */
+    onEnable () {
+      const arePointersVisible = this.arePointersVisible;
+      this.showPointers();
+      this.arePointersVisible = arePointersVisible;
+    },
+
+    /**
+     * Hide pointers on disable
+     */
+    onDisable () {
+      const arePointersVisible = this.arePointersVisible;
+      this.hidePointers();
+      this.arePointersVisible = arePointersVisible;
+    },
+
+    onFrame ({hands}) {
+      // Hide pointers
+      if (!hands?.multiHandLandmarks) {
+        this.$pointer.forEach($pointer => $pointer.style.display = 'none');
+        return
+      }
+
+      hands.pointer = [
+        { isVisible: false },
+        { isVisible: false },
+        { isVisible: false },
+        { isVisible: false }
+      ];
+      
+      hands.multiHandLandmarks.forEach((landmarks, n) => {
+        // Use the correct hand index
+        let hand;
+        if (n < 2) {
+          hand = hands.multiHandedness[n].label === 'Right' ? 0 : 1;
+        } else {
+          hand = hands.multiHandedness[n].label === 'Right' ? 2 : 3;
+        }
+
+        this.handsfree.TweenMax.to(this.tween[hand], 1, {
+          // x: window.outerWidth 
+          //   - (.5 - hands.multiHandLandmarks[n][21].x) * this.config.speed.x * window.outerWidth
+          //   - .5 * this.config.speed.x * window.outerWidth
+          //   + this.config.offset.x,
+          x: window.outerWidth * this.config.speed.x
+            - window.outerWidth * this.config.speed.x / 2
+            + window.outerWidth / 2
+            - hands.multiHandLandmarks[n][21].x * this.config.speed.x * window.outerWidth
+            + this.config.offset.x,
+          y: hands.multiHandLandmarks[n][21].y * window.outerHeight * this.config.speed.y
+            - window.outerHeight * this.config.speed.y / 2
+            + window.outerHeight / 2
+            + this.config.offset.y,
+          overwrite: true,
+          ease: 'linear.easeNone',
+          immediate: true
+        });
+    
+        this.$pointer[hand].style.left = `${this.tween[hand].x}px`;
+        this.$pointer[hand].style.top = `${this.tween[hand].y}px`;
+        
+        hands.pointer[hand] = {
+          x: this.tween[hand].x,
+          y: this.tween[hand].y,
+          isVisible: true
+        };
+      });
+
+      // Toggle pointers
+      hands.pointer.forEach((pointer, hand) => {
+        if (pointer.isVisible) {
+          this.$pointer[hand].style.display = 'block';
+        } else {
+          this.$pointer[hand].style.display = 'none';
+        }
+      });
+    },
+
+    /**
+     * Toggle pointer
+     */
+    onDisable() {
+      this.$pointer.forEach($pointer => {
+        $pointer.classList.add('handsfree-hidden');
+      });
+    },
+
+    /**
+     * Toggle pointers
+     */
+    showPointers () {
+      this.arePointersVisible = true;
+      for (let i = 0; i < 4; i++) {
+        this.$pointer[i].classList.remove('handsfree-hidden');
+      }
+    },
+    hidePointers () {
+      this.arePointersVisible = false;
+      for (let i = 0; i < 4; i++) {
+        this.$pointer[i].classList.add('handsfree-hidden');
+      }
     }
   };
 
@@ -6744,15 +7424,12 @@
             🧙‍♂️ Presenting 🧙‍♀️
 
                 Handsfree.js
-                  8.0.10
+                  8.2.2
 
     Docs:       https://handsfree.js.org
     Repo:       https://github.com/midiblocks/handsfree
-    Discord:    https://discord.gg/snbB62DUT9
+    Discord:    https://discord.gg/q96txF5Wf5
     Newsletter: http://eepurl.com/hhD7S1
-
-    
-
 
     /////////////////////////////////////////////////////////////
     ///////////////////// Table of Contents /////////////////////
@@ -6765,6 +7442,7 @@
     #3 Plugins
     #4 Events
     #5 Helpers
+    #6 Debugger
 
   */
 
@@ -6773,13 +7451,22 @@
     faceClick: pluginFaceClick,
     faceScroll: pluginFaceScroll,
     pinchScroll: pluginPinchScroll,
+    pinchers: pluginPinchers,
+    palmPointers: pluginPalmPointers,
   };
 
 
 
-  /////////////////////////////////////////////////////////////
-  ////////////////////////// #1 SETUP /////////////////////////
-  /////////////////////////////////////////////////////////////
+  /* ////////////////////////// #1 SETUP /////////////////////////
+
+                ███████╗███████╗████████╗██╗   ██╗██████╗ 
+                ██╔════╝██╔════╝╚══██╔══╝██║   ██║██╔══██╗
+                ███████╗█████╗     ██║   ██║   ██║██████╔╝
+                ╚════██║██╔══╝     ██║   ██║   ██║██╔═══╝ 
+                ███████║███████╗   ██║   ╚██████╔╝██║     
+                ╚══════╝╚══════╝   ╚═╝    ╚═════╝ ╚═╝     
+
+  ///////////////////////////////////////////////////////////// */
 
   // Used to separate video, canvas, etc ID's
   let id = 0;
@@ -6801,7 +7488,7 @@
       
       // Assign the instance ID
       this.id = ++id;
-      this.version = '8.0.10';
+      this.version = '8.2.2';
       this.data = {};
 
       // Dependency management
@@ -6863,83 +7550,15 @@
         hands: {},
         facemesh: {},
         pose: {},
-        holistic: {}
+        holistic: {},
+        handpose: {}
       };
       this.model.weboji = new WebojiModel(this, this.config.weboji);
       this.model.hands = new HandsModel(this, this.config.hands);
       this.model.pose = new PoseModel(this, this.config.pose);
       this.model.facemesh = new FacemeshModel(this, this.config.facemesh);
       this.model.holistic = new HolisticModel(this, this.config.holistic);
-    }
-
-    /**
-     * Sets up the video and canvas elements
-     */
-    setupDebugger () {
-      this.debug = {};
-      
-      // Feedback wrap
-      if (!this.config.setup.wrap.$el) {
-        const $wrap = document.createElement('DIV');
-        $wrap.classList.add('handsfree-feedback');
-        this.config.setup.wrap.$el = $wrap;
-      }
-      this.debug.$wrap = this.config.setup.wrap.$el;
-
-      // Create video element
-      if (!this.config.setup.video.$el) {
-        const $video = document.createElement('VIDEO');
-        $video.setAttribute('playsinline', true);
-        $video.classList.add('handsfree-video');
-        $video.setAttribute('id', `handsfree-video-${this.id}`);
-        this.config.setup.video.$el = $video;
-      }
-      this.debug.$video = this.config.setup.video.$el;
-      this.debug.$video.width = this.config.setup.video.width;
-      this.debug.$video.height = this.config.setup.video.height;
-      this.debug.$wrap.appendChild(this.debug.$video);
-
-      // Context 2D canvases
-      this.debug.$canvas = {};
-      this.debug.context = {};
-      this.config.setup.canvas.video = {
-        width: this.debug.$video.width,
-        height: this.debug.$video.height
-      }
-
-      // The video canvas is used to display the video
-      ;['video', 'weboji', 'facemesh', 'pose', 'hands', 'holistic'].forEach(model => {
-        this.debug.$canvas[model] = {};
-        this.debug.context[model] = {};
-        
-        let $canvas = this.config.setup.canvas[model].$el;
-        if (!$canvas) {
-          $canvas = document.createElement('CANVAS');
-          this.config.setup.canvas[model].$el = $canvas;
-        }
-        
-        // Classes
-        $canvas.classList.add('handsfree-canvas', `handsfree-canvas-${model}`, `handsfree-hide-when-started-without-${model}`);
-        $canvas.setAttribute('id', `handsfree-canvas-${model}-${this.id}`);
-
-        // Dimensions
-        this.debug.$canvas[model] = this.config.setup.canvas[model].$el;
-        this.debug.$canvas[model].width = this.config.setup.canvas[model].width;
-        this.debug.$canvas[model].height = this.config.setup.canvas[model].height;
-        this.debug.$wrap.appendChild(this.debug.$canvas[model]);
-
-        // Context
-        if (model === 'weboji') ; else {
-          this.debug.context[model] = this.debug.$canvas[model].getContext('2d');  
-        }
-      });
-      
-      // Append everything to the body
-      this.config.setup.wrap.$parent.appendChild(this.debug.$wrap);
-
-      // Add classes
-      this.config.showDebug && document.body.classList.add('handsfree-show-debug');
-      this.config.showVideo && document.body.classList.add('handsfree-show-video');
+      this.model.handpose = new HandposeModel(this, this.config.handpose);
     }
 
     /**
@@ -6974,6 +7593,9 @@
       if (typeof config.holistic === 'boolean') {
         config.holistic = {enabled: config.holistic};
       }
+      if (typeof config.handpose === 'boolean') {
+        config.handpose = {enabled: config.handpose};
+      }
 
       // Map plugin booleans to objects
       config.plugin && Object.keys(config.plugin).forEach(plugin => {
@@ -6996,9 +7618,9 @@
       this.config = this.cleanConfig(config, this.config)
 
       // Run enable/disable methods on changed models
-      ;['hands', 'facemesh', 'pose', 'holistic', 'weboji'].forEach(model => {
+      ;['hands', 'facemesh', 'pose', 'holistic', 'handpose', 'weboji'].forEach(model => {
         let wasEnabled = this.model[model].enabled;
-        this.config[model].config = this.model[model].config;
+        this.config[model] = this.model[model].config = merge_1({}, this.model[model].config, config[model]);
 
         if (wasEnabled && !this.config[model].enabled) this.model[model].disable();
         else if (!wasEnabled && this.config[model].enabled) this.model[model].enable(false);
@@ -7026,9 +7648,16 @@
 
 
 
-    /////////////////////////////////////////////////////////////
-    /////////////////////////// #2 LOOP /////////////////////////
-    /////////////////////////////////////////////////////////////
+  /* /////////////////////////// #2 LOOP /////////////////////////
+
+                    ██╗      ██████╗  ██████╗ ██████╗ 
+                    ██║     ██╔═══██╗██╔═══██╗██╔══██╗
+                    ██║     ██║   ██║██║   ██║██████╔╝
+                    ██║     ██║   ██║██║   ██║██╔═══╝ 
+                    ███████╗╚██████╔╝╚██████╔╝██║     
+                    ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝     
+    
+  /////////////////////////////////////////////////////////////// */
 
 
     
@@ -7048,7 +7677,9 @@
       this.emit('loading', this);
 
       // Call the callback once things are loaded
-      callback && document.addEventListener('handsfree-modelReady', callback, {once: true});
+      if (callback) {
+        this.on('modelReady', callback, {once: true});
+      }
       
       // Load dependencies
       this.numModelsLoaded = 0;
@@ -7124,8 +7755,8 @@
 
       // Render video behind everything else
       // - Note: Weboji uses its own camera
-      if (this.config.showDebug) {
-        const isUsingCamera = ['hands', 'pose', 'holistic', 'facemesh'].find(model => {
+      if (this.isDebugging) {
+        const isUsingCamera = ['hands', 'pose', 'holistic', 'handpose', 'facemesh'].find(model => {
           if (this.model[model].enabled) {
             return model
           }
@@ -7143,13 +7774,16 @@
     
 
 
-    /////////////////////////////////////////////////////////////
-    //////////////////////// #3 PLUGINS /////////////////////////
-    /////////////////////////////////////////////////////////////
+  /* //////////////////////// #3 PLUGINS /////////////////////////
 
+        ██████╗ ██╗     ██╗   ██╗ ██████╗ ██╗███╗   ██╗███████╗
+        ██╔══██╗██║     ██║   ██║██╔════╝ ██║████╗  ██║██╔════╝
+        ██████╔╝██║     ██║   ██║██║  ███╗██║██╔██╗ ██║███████╗
+        ██╔═══╝ ██║     ██║   ██║██║   ██║██║██║╚██╗██║╚════██║
+        ██║     ███████╗╚██████╔╝╚██████╔╝██║██║ ╚████║███████║
+        ╚═╝     ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝
 
-    
-
+    /////////////////////////////////////////////////////////////*/
 
     /**
      * Adds a callback (we call it a plugin) to be called after every tracked frame
@@ -7279,11 +7913,16 @@
 
 
 
-    /////////////////////////////////////////////////////////////
-    ///////////////////////// #4 EVENTS /////////////////////////
-    /////////////////////////////////////////////////////////////
+  /* ///////////////////////// #4 EVENTS /////////////////////////
 
-
+        ███████╗██╗   ██╗███████╗███╗   ██╗████████╗███████╗
+        ██╔════╝██║   ██║██╔════╝████╗  ██║╚══██╔══╝██╔════╝
+        █████╗  ██║   ██║█████╗  ██╔██╗ ██║   ██║   ███████╗
+        ██╔══╝  ╚██╗ ██╔╝██╔══╝  ██║╚██╗██║   ██║   ╚════██║
+        ███████╗ ╚████╔╝ ███████╗██║ ╚████║   ██║   ███████║
+        ╚══════╝  ╚═══╝  ╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝
+                                                      
+  ///////////////////////////////////////////////////////////// */
     
 
 
@@ -7315,9 +7954,16 @@
 
 
 
-    /////////////////////////////////////////////////////////////
-    //////////////////////// #5 HELPERS /////////////////////////
-    /////////////////////////////////////////////////////////////
+  /* //////////////////////// #5 HELPERS /////////////////////////
+
+      ██╗  ██╗███████╗██╗     ██████╗ ███████╗██████╗ ███████╗
+      ██║  ██║██╔════╝██║     ██╔══██╗██╔════╝██╔══██╗██╔════╝
+      ███████║█████╗  ██║     ██████╔╝█████╗  ██████╔╝███████╗
+      ██╔══██║██╔══╝  ██║     ██╔═══╝ ██╔══╝  ██╔══██╗╚════██║
+      ██║  ██║███████╗███████╗██║     ███████╗██║  ██║███████║
+      ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝╚══════╝
+                                                                
+    /////////////////////////////////////////////////////////////*/
 
 
 
@@ -7334,7 +7980,7 @@
     }
 
     /**
-     * Gets the webcam media stream into handsfree.feedback.stream
+     * Gets the webcam media stream into handsfree.debug.$video
      * @see https://handsfree.js.org/ref/method/getUserMedia
      * 
      * @param {Object} callback The callback to call after the stream is received
@@ -7388,6 +8034,113 @@
       Object.keys(corePlugins).forEach(name => {
         this.use(name, corePlugins[name]);
       });    
+    }
+
+
+  /* //////////////////////// #6 DEBUGGER ////////////////////////
+
+  ██████╗ ███████╗██████╗ ██╗   ██╗ ██████╗  ██████╗ ███████╗██████╗ 
+  ██╔══██╗██╔════╝██╔══██╗██║   ██║██╔════╝ ██╔════╝ ██╔════╝██╔══██╗
+  ██║  ██║█████╗  ██████╔╝██║   ██║██║  ███╗██║  ███╗█████╗  ██████╔╝
+  ██║  ██║██╔══╝  ██╔══██╗██║   ██║██║   ██║██║   ██║██╔══╝  ██╔══██╗
+  ██████╔╝███████╗██████╔╝╚██████╔╝╚██████╔╝╚██████╔╝███████╗██║  ██║
+  ╚═════╝ ╚══════╝╚═════╝  ╚═════╝  ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═╝
+                                                                     
+    /////////////////////////////////////////////////////////////*/
+
+
+
+    /**
+     * Sets up the video and canvas elements
+     */
+    setupDebugger () {
+      this.debug = {};
+      
+      // debugger wrap
+      if (!this.config.setup.wrap.$el) {
+        const $wrap = document.createElement('DIV');
+        $wrap.classList.add('handsfree-debugger');
+        this.config.setup.wrap.$el = $wrap;
+      }
+      this.debug.$wrap = this.config.setup.wrap.$el;
+
+      // Create video element
+      if (!this.config.setup.video.$el) {
+        const $video = document.createElement('VIDEO');
+        $video.setAttribute('playsinline', true);
+        $video.classList.add('handsfree-video');
+        $video.setAttribute('id', `handsfree-video-${this.id}`);
+        this.config.setup.video.$el = $video;
+      }
+      this.debug.$video = this.config.setup.video.$el;
+      this.debug.$video.width = this.config.setup.video.width;
+      this.debug.$video.height = this.config.setup.video.height;
+      this.debug.$wrap.appendChild(this.debug.$video);
+
+      // Context 2D canvases
+      this.debug.$canvas = {};
+      this.debug.context = {};
+      this.config.setup.canvas.video = {
+        width: this.debug.$video.width,
+        height: this.debug.$video.height
+      }
+
+      // The video canvas is used to display the video
+      ;['video', 'weboji', 'facemesh', 'pose', 'hands', 'holistic', 'handpose'].forEach(model => {
+        this.debug.$canvas[model] = {};
+        this.debug.context[model] = {};
+        
+        let $canvas = this.config.setup.canvas[model].$el;
+        if (!$canvas) {
+          $canvas = document.createElement('CANVAS');
+          this.config.setup.canvas[model].$el = $canvas;
+        }
+        
+        // Classes
+        $canvas.classList.add('handsfree-canvas', `handsfree-canvas-${model}`, `handsfree-hide-when-started-without-${model}`);
+        $canvas.setAttribute('id', `handsfree-canvas-${model}-${this.id}`);
+
+        // Dimensions
+        this.debug.$canvas[model] = this.config.setup.canvas[model].$el;
+        this.debug.$canvas[model].width = this.config.setup.canvas[model].width;
+        this.debug.$canvas[model].height = this.config.setup.canvas[model].height;
+        this.debug.$wrap.appendChild(this.debug.$canvas[model]);
+
+        // Context
+        if (['weboji', 'handpose'].includes(model)) {
+          this.debug.$canvas[model].classList.add('handsfree-canvas-webgl');
+        } else {
+          this.debug.context[model] = this.debug.$canvas[model].getContext('2d');  
+        }
+      });
+      
+      // Append everything to the body
+      this.config.setup.wrap.$parent.appendChild(this.debug.$wrap);
+
+      // Add classes
+      if (this.config.showDebug) {
+        this.showDebugger();
+      } else {
+        this.hideDebugger();
+      }
+    }
+
+    /**
+     * Shows the debugger
+     */
+    showDebugger () {
+      this.isDebugging = true;
+      document.body.classList.add('handsfree-show-debug');
+      document.body.classList.remove('handsfree-hide-debug');
+    }
+
+    /**
+     * Hides the debugger
+     */
+    hideDebugger () {
+      this.isDebugging = false;
+      document.body.classList.remove('handsfree-show-debug');
+      document.body.classList.add('handsfree-hide-debug');
     }
   }
 

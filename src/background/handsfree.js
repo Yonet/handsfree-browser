@@ -14,6 +14,7 @@ ports = {
 const handsfree = new Handsfree({
   assetsPath: '/assets/js/handsfree/assets',
   showDebug: true,
+  // weboji: true,
   hands: true
 })
 
