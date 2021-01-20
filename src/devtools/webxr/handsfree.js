@@ -20,7 +20,7 @@ const $handsfree = {
 handsfree = new Handsfree({
   isClient: true,
   hands: true,
-  weboji: true
+  // weboji: true
 })
 handsfree.enablePlugins('browser')
 
@@ -83,8 +83,8 @@ handsfree.use('threeUpdater', {
       if (assetNodes[DEVICE.LEFT_CONTROLLER]) {
         // Tween rotation
         TweenMax.to(this.tween.hand.left, 1, {
-          x: -hands.pointer[0].x / window.outerWidth,
-          y: -hands.pointer[0].y / window.outerHeight
+          x: -hands.pointer[1].x / window.outerWidth,
+          y: -hands.pointer[1].y / window.outerHeight
         })
   
         assetNodes[DEVICE.LEFT_CONTROLLER].position.x = this.tween.hand.left.x * 4 * $handsfree.$transMult.value + 2
@@ -94,8 +94,8 @@ handsfree.use('threeUpdater', {
       if (assetNodes[DEVICE.RIGHT_CONTROLLER]) {
         // Tween rotation
         TweenMax.to(this.tween.hand.right, 1, {
-          x: -hands.pointer[1].x / window.outerWidth,
-          y: -hands.pointer[1].y / window.outerHeight
+          x: -hands.pointer[0].x / window.outerWidth,
+          y: -hands.pointer[0].y / window.outerHeight
         })
     
         assetNodes[DEVICE.RIGHT_CONTROLLER].position.x = this.tween.hand.right.x * 4 * $handsfree.$transMult.value + 2
@@ -106,9 +106,6 @@ handsfree.use('threeUpdater', {
     // Update everything. The Polyfill will handle the rest
     updateHeadsetPropertyComponent()
     notifyPoses()
-    // notifyPoseChange(assetNodes[DEVICE.HEADSET])
-    // notifyInputPoseChange(assetNodes[DEVICE.RIGHT_CONTROLLER])
-    // notifyInputPoseChange(assetNodes[DEVICE.LEFT_CONTROLLER])
     render()
   }
 })

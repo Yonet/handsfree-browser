@@ -1,26 +1,54 @@
-# handsfree-browser
+# The Handsfree Browser Extension
 
 > 🚨 This project useable but not officially released yet
->
-> 🚨 This is currently only tested in Chrome and Edge (by accident 😅) but will support Firefox very soon
 
-A browser extension for using and developing the web handsfree 🖐👀🖐, powered by [Handsfree.js.org](https://handsfree.js.org/) and the [Mozilla WebXR Emulator Extension](https://github.com/MozillaReality/WebXR-emulator-extension)
+This [Handsfree.js](https://handsfree.js.org) powered browser extension is a designed to help you browse the web handsfree through face and/or hand gestures. The aspiration is to develop a "User Script Manager" like [Tampermonkey](https://www.tampermonkey.net/) and [Greasemonkey](https://www.greasespot.net/), but for handsfree-ifying web pages, web games, web apps, and any other type of content found online.
 
-This project is a started as a fork of the Mozilla WebXR Emulator Extension. Since the webcam will already be on to help you develop and test your WebXR experiences handsfree and without devices, I thought I would just go ahead and make the dang browser handsfree too!
+This browser extension also includes handsfree Dev Tools, primarily to assist in handsfree WebXR development. In short, this extension is designed to help you use your entire browser and web totally handsfree!
 
-Currently this extension helps you:
+<br>
+<br>
+<br>
+<hr>
+<br>
+<br>
+<br>
 
-- Scroll websites with a pinch gesture 👌
-- Emulate WebXR headsets through the Mozilla WebXR DevTools
+# Handsfree Browsing
 
-Eventually it will:
+By default, each page will get a "Face Pointer" or a set of "Palm Pointers" for you to browse pages handsfree.
 
-- Have a user script manager (like GreaseMonkey/TamperMonkey) so that you can script Handsfree.js on a per-site or even per-page basis
-- Support basic controller emulation
-- Real WebXR hand tracking
-
+![](https://media3.giphy.com/media/Iv2aSMS0QTy2P5JNCX/giphy.gif)
 ![](https://media3.giphy.com/media/BSkodGjuwBPAEwxjGv/giphy.gif)
+
+However, in addition to the pointers you can add custom handsfree interactions. For example, here's a demonstration of handsfree-ifying Jason Webb's [Reaction Diffusion Playgound](https://jasonwebb.github.io/reaction-diffusion-playground/) where each individual finger pinch does something different:
+
+![](https://media4.giphy.com/media/YB5GHxDKDFti74Jzz9/giphy.gif)
+
+<br>
+<br>
+<br>
+<hr>
+<br>
+<br>
+<br>
+
+# Handsfree WebXR DevTools
+
+This project is a started as a fork of the [Mozilla WebXR Emulator Extension](https://github.com/MozillaReality/WebXR-emulator-extension). This section of the browser extension was initiated from conversations with [Alex Ionkov](http://pages.cs.wisc.edu/~ionkov/).
+
+Currently the DevTools helps you emulate WebXR headsets with basic controller support.
+
 ![](https://media1.giphy.com/media/w3JUFtNyXNafLVrh6F/giphy.gif)
+![]()
+
+<br>
+<br>
+<br>
+<hr>
+<br>
+<br>
+<br>
 
 # Development Guide
 
@@ -44,3 +72,16 @@ Each of the files are located in their respective context folders in `/src/`. Ha
 ![](https://i.imgur.com/jXmhYnb.png)
 
 - Firefox: Coming soon, I switched computers and didn't realize I continued developing on Chrome 😆
+
+<br>
+<br>
+<br>
+<hr>
+<br>
+<br>
+<br>
+
+# Acknowledgemetns
+
+- [Alex Ionkov](http://pages.cs.wisc.edu/~ionkov/) for the original handsfree WebXR Emulator vision, research, and our planning and discussions
+- [Mozilla WebXR Emulator Extension team](https://github.com/MozillaReality/WebXR-emulator-extension) from which the WebXR Emulator Dev Tools was forked from

@@ -3695,7 +3695,7 @@
    */
   var defaultConfig = {
     // Use CDN by default
-    assetsPath: 'https://unpkg.com/handsfree@8.2.1/build/lib/assets',
+    assetsPath: 'https://unpkg.com/handsfree@8.2.2/build/lib/assets',
     
     // This will load everything but the models. This is useful when you want to use run inference
     // on another device or context but run the plugins on the current device
@@ -6965,10 +6965,11 @@
     $target: [null, null, null, null],
 
     // The original grab point
+    origScrollLeft: [0, 0, 0, 0],
     origScrollTop: [0, 0, 0, 0],
 
     // The tweened scrollTop, used to smoothen out scroll
-    tweenScroll: [{y: 0}, {y: 0}, {y: 0}, {y: 0}],
+    tweenScroll: [{x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}, {x: 0, y: 0}],
 
     config: {
       // Number of frames over the same element before activating that element
@@ -6992,6 +6993,7 @@
       setTimeout(() => {
         if (!hands.pointer) return
         const height = this.handsfree.debug.$canvas.hands.height;
+        const width = this.handsfree.debug.$canvas.hands.width;
 
         hands.pointer.forEach((pointer, n) => {
           // @fixme Get rid of n > origPinch.length
@@ -7003,20 +7005,20 @@
 
             this.$target[n] = this.getTarget($potTarget);
             this.origScrollTop[n] = this.getTargetScrollTop(this.$target[n]);
+            this.origScrollLeft[n] = this.getTargetScrollLeft(this.$target[n]);
             this.handsfree.TweenMax.killTweensOf(this.tweenScroll[n]);
           }
 
           if (hands.pinchState[n][0] === 'held' && this.$target[n]) {
-            console.log(this.origScrollTop[n], (hands.origPinch[n][0].y - hands.curPinch[n][0].y) * height);
-
             this.handsfree.TweenMax.to(this.tweenScroll[n], 1, {
+              x: this.origScrollLeft[n] - (hands.origPinch[n][0].x - hands.curPinch[n][0].x) * width,
               y: this.origScrollTop[n] + (hands.origPinch[n][0].y - hands.curPinch[n][0].y) * height,
               overwrite: true,
               ease: 'linear.easeNone',
               immediateRender: true  
             });
 
-            this.$target[n].scrollTo(0, this.tweenScroll[n].y);
+            this.$target[n].scrollTo(this.tweenScroll[n].x, this.tweenScroll[n].y);
           }
         });
       });
@@ -7042,6 +7044,13 @@
           return window
         }
       }
+    },
+
+    /**
+     * Gets the scrolltop, taking account the window object
+     */
+    getTargetScrollLeft ($target) {
+      return $target.scrollX || $target.scrollLeft || 0
     },
 
     /**
@@ -7248,6 +7257,7 @@
 
     // The pointer element
     $pointer: [],
+    arePointersVisible: true,
 
     // Pointers position
     pointer: [
@@ -7272,33 +7282,54 @@
       },
 
       speed: {
-        x: 1.5,
-        y: 1.5
+        x: 1,
+        y: 1
       }
     },
 
-    onEnable () {
-      if (!this.$pointer[0]) {
-        for (let i = 0; i < 4; i++) {
-          const $pointer = document.createElement('div');
-          $pointer.classList.add('handsfree-pointer', 'handsfree-pointer-palm', 'handsfree-hide-when-started-without-hands');
-          document.body.appendChild($pointer);
-          this.$pointer[i] = $pointer;
-        }
-      }
-
-      for (let i = 0; i < 4; i++) {
-        this.$pointer[i].classList.remove('handsfree-hidden');
-        this.pointer[i] = { x: -20, y: -20 };
-      }
-    },
-
+    /**
+     * Create and toggle pointers
+     */
     onUse () {
-      this.onEnable();
+      for (let i = 0; i < 4; i++) {
+        const $pointer = document.createElement('div');
+        $pointer.classList.add('handsfree-pointer', 'handsfree-pointer-palm', 'handsfree-hide-when-started-without-hands');
+        document.body.appendChild($pointer);
+        this.$pointer[i] = $pointer;
+      }
+      
+      if (this.enabled && this.arePointersVisible) {
+        this.showPointers();
+      } else {
+        this.hidePointers();
+      }
+    },
+
+    /**
+     * Show pointers on enable
+     */
+    onEnable () {
+      const arePointersVisible = this.arePointersVisible;
+      this.showPointers();
+      this.arePointersVisible = arePointersVisible;
+    },
+
+    /**
+     * Hide pointers on disable
+     */
+    onDisable () {
+      const arePointersVisible = this.arePointersVisible;
+      this.hidePointers();
+      this.arePointersVisible = arePointersVisible;
     },
 
     onFrame ({hands}) {
-      if (!hands?.multiHandLandmarks) return
+      // Hide pointers
+      if (!hands?.multiHandLandmarks) {
+        this.$pointer.forEach($pointer => $pointer.style.display = 'none');
+        return
+      }
+
       hands.pointer = [
         { isVisible: false },
         { isVisible: false },
@@ -7316,8 +7347,19 @@
         }
 
         this.handsfree.TweenMax.to(this.tween[hand], 1, {
-          x: window.outerWidth - hands.multiHandLandmarks[n][21].x * window.outerWidth + this.config.offset.x,
-          y: hands.multiHandLandmarks[n][21].y * window.outerHeight + this.config.offset.y,
+          // x: window.outerWidth 
+          //   - (.5 - hands.multiHandLandmarks[n][21].x) * this.config.speed.x * window.outerWidth
+          //   - .5 * this.config.speed.x * window.outerWidth
+          //   + this.config.offset.x,
+          x: window.outerWidth * this.config.speed.x
+            - window.outerWidth * this.config.speed.x / 2
+            + window.outerWidth / 2
+            - hands.multiHandLandmarks[n][21].x * this.config.speed.x * window.outerWidth
+            + this.config.offset.x,
+          y: hands.multiHandLandmarks[n][21].y * window.outerHeight * this.config.speed.y
+            - window.outerHeight * this.config.speed.y / 2
+            + window.outerHeight / 2
+            + this.config.offset.y,
           overwrite: true,
           ease: 'linear.easeNone',
           immediate: true
@@ -7350,6 +7392,22 @@
       this.$pointer.forEach($pointer => {
         $pointer.classList.add('handsfree-hidden');
       });
+    },
+
+    /**
+     * Toggle pointers
+     */
+    showPointers () {
+      this.arePointersVisible = true;
+      for (let i = 0; i < 4; i++) {
+        this.$pointer[i].classList.remove('handsfree-hidden');
+      }
+    },
+    hidePointers () {
+      this.arePointersVisible = false;
+      for (let i = 0; i < 4; i++) {
+        this.$pointer[i].classList.add('handsfree-hidden');
+      }
     }
   };
 
@@ -7366,15 +7424,12 @@
             🧙‍♂️ Presenting 🧙‍♀️
 
                 Handsfree.js
-                  8.2.1
+                  8.2.2
 
     Docs:       https://handsfree.js.org
     Repo:       https://github.com/midiblocks/handsfree
     Discord:    https://discord.gg/q96txF5Wf5
     Newsletter: http://eepurl.com/hhD7S1
-
-    
-
 
     /////////////////////////////////////////////////////////////
     ///////////////////// Table of Contents /////////////////////
@@ -7402,9 +7457,16 @@
 
 
 
-  /////////////////////////////////////////////////////////////
-  ////////////////////////// #1 SETUP /////////////////////////
-  /////////////////////////////////////////////////////////////
+  /* ////////////////////////// #1 SETUP /////////////////////////
+
+                ███████╗███████╗████████╗██╗   ██╗██████╗ 
+                ██╔════╝██╔════╝╚══██╔══╝██║   ██║██╔══██╗
+                ███████╗█████╗     ██║   ██║   ██║██████╔╝
+                ╚════██║██╔══╝     ██║   ██║   ██║██╔═══╝ 
+                ███████║███████╗   ██║   ╚██████╔╝██║     
+                ╚══════╝╚══════╝   ╚═╝    ╚═════╝ ╚═╝     
+
+  ///////////////////////////////////////////////////////////// */
 
   // Used to separate video, canvas, etc ID's
   let id = 0;
@@ -7426,7 +7488,7 @@
       
       // Assign the instance ID
       this.id = ++id;
-      this.version = '8.2.1';
+      this.version = '8.2.2';
       this.data = {};
 
       // Dependency management
@@ -7586,9 +7648,16 @@
 
 
 
-    /////////////////////////////////////////////////////////////
-    /////////////////////////// #2 LOOP /////////////////////////
-    /////////////////////////////////////////////////////////////
+  /* /////////////////////////// #2 LOOP /////////////////////////
+
+                    ██╗      ██████╗  ██████╗ ██████╗ 
+                    ██║     ██╔═══██╗██╔═══██╗██╔══██╗
+                    ██║     ██║   ██║██║   ██║██████╔╝
+                    ██║     ██║   ██║██║   ██║██╔═══╝ 
+                    ███████╗╚██████╔╝╚██████╔╝██║     
+                    ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝     
+    
+  /////////////////////////////////////////////////////////////// */
 
 
     
@@ -7705,13 +7774,16 @@
     
 
 
-    /////////////////////////////////////////////////////////////
-    //////////////////////// #3 PLUGINS /////////////////////////
-    /////////////////////////////////////////////////////////////
+  /* //////////////////////// #3 PLUGINS /////////////////////////
 
+        ██████╗ ██╗     ██╗   ██╗ ██████╗ ██╗███╗   ██╗███████╗
+        ██╔══██╗██║     ██║   ██║██╔════╝ ██║████╗  ██║██╔════╝
+        ██████╔╝██║     ██║   ██║██║  ███╗██║██╔██╗ ██║███████╗
+        ██╔═══╝ ██║     ██║   ██║██║   ██║██║██║╚██╗██║╚════██║
+        ██║     ███████╗╚██████╔╝╚██████╔╝██║██║ ╚████║███████║
+        ╚═╝     ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝
 
-    
-
+    /////////////////////////////////////////////////////////////*/
 
     /**
      * Adds a callback (we call it a plugin) to be called after every tracked frame
@@ -7841,11 +7913,16 @@
 
 
 
-    /////////////////////////////////////////////////////////////
-    ///////////////////////// #4 EVENTS /////////////////////////
-    /////////////////////////////////////////////////////////////
+  /* ///////////////////////// #4 EVENTS /////////////////////////
 
-
+        ███████╗██╗   ██╗███████╗███╗   ██╗████████╗███████╗
+        ██╔════╝██║   ██║██╔════╝████╗  ██║╚══██╔══╝██╔════╝
+        █████╗  ██║   ██║█████╗  ██╔██╗ ██║   ██║   ███████╗
+        ██╔══╝  ╚██╗ ██╔╝██╔══╝  ██║╚██╗██║   ██║   ╚════██║
+        ███████╗ ╚████╔╝ ███████╗██║ ╚████║   ██║   ███████║
+        ╚══════╝  ╚═══╝  ╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝
+                                                      
+  ///////////////////////////////////////////////////////////// */
     
 
 
@@ -7877,9 +7954,16 @@
 
 
 
-    /////////////////////////////////////////////////////////////
-    //////////////////////// #5 HELPERS /////////////////////////
-    /////////////////////////////////////////////////////////////
+  /* //////////////////////// #5 HELPERS /////////////////////////
+
+      ██╗  ██╗███████╗██╗     ██████╗ ███████╗██████╗ ███████╗
+      ██║  ██║██╔════╝██║     ██╔══██╗██╔════╝██╔══██╗██╔════╝
+      ███████║█████╗  ██║     ██████╔╝█████╗  ██████╔╝███████╗
+      ██╔══██║██╔══╝  ██║     ██╔═══╝ ██╔══╝  ██╔══██╗╚════██║
+      ██║  ██║███████╗███████╗██║     ███████╗██║  ██║███████║
+      ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝     ╚══════╝╚═╝  ╚═╝╚══════╝
+                                                                
+    /////////////////////////////////////////////////////////////*/
 
 
 
@@ -7953,10 +8037,16 @@
     }
 
 
+  /* //////////////////////// #6 DEBUGGER ////////////////////////
 
-    /////////////////////////////////////////////////////////////
-    //////////////////////// #6 DEBUGGER ////////////////////////
-    /////////////////////////////////////////////////////////////
+  ██████╗ ███████╗██████╗ ██╗   ██╗ ██████╗  ██████╗ ███████╗██████╗ 
+  ██╔══██╗██╔════╝██╔══██╗██║   ██║██╔════╝ ██╔════╝ ██╔════╝██╔══██╗
+  ██║  ██║█████╗  ██████╔╝██║   ██║██║  ███╗██║  ███╗█████╗  ██████╔╝
+  ██║  ██║██╔══╝  ██╔══██╗██║   ██║██║   ██║██║   ██║██╔══╝  ██╔══██╗
+  ██████╔╝███████╗██████╔╝╚██████╔╝╚██████╔╝╚██████╔╝███████╗██║  ██║
+  ╚═════╝ ╚══════╝╚═════╝  ╚═════╝  ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═╝
+                                                                     
+    /////////////////////////////////////////////////////////////*/
 
 
 
