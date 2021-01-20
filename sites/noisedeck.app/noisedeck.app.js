@@ -25,6 +25,12 @@ const $ = {
     el: document.querySelector('#loopFreq2'),
     start: 0
   },
+
+  // Left index
+  brightness: {
+    el: document.querySelector('#brightness'),
+    start: 0
+  },
 }
 handsfree.disablePlugins('browser')
 
@@ -66,6 +72,19 @@ handsfree.use('noisedeck.app', {
           $.loopFreq2.start - (hands.curPinch[1][1].y - hands.origPinch[1][1].y) * 20,
           $.loopFreq2.el.max,
           $.loopFreq2.el.min
+        )
+      }
+    }
+
+    // Left Index: Kaleidoscope
+    if (hands.pointer[0].isVisible) {
+      if (hands.pinchState[0][0] === 'start') {
+        $.brightness.start = $.brightness.el.value
+      } else if (hands.pinchState[0][0] === 'held') {
+        $.brightness.el.value = normalize(
+          $.brightness.start - (hands.origPinch[0][0].x - hands.curPinch[0][0].x) * 2,
+          $.brightness.el.max,
+          $.brightness.el.min
         )
       }
     }
