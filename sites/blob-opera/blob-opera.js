@@ -1,7 +1,15 @@
-const $ = {
-  canvas: {
-    el: document.querySelector('canvas:not([class^=handsfree])')
-  }
+/**
+ * Direct a choir of blobs in goosebump-inducing harmony
+ * - Only works with one pinch at a time
+ * 
+ * @see https://handsfree.js.org/ref/plugin/pinchers.html#pinch-states-with-pinchstate
+ */
+
+// Maps handsfree pincher events to 
+const eventMap = {
+  start: 'mousedown',
+  held: 'mousemove',
+  released: 'mouseup'
 }
 
 handsfree.use('blobOpera', {
@@ -9,42 +17,12 @@ handsfree.use('blobOpera', {
     if (!hands.multiHandLandmarks) return
 
     hands.pointer.forEach((pointer, hand) => {
-      // Click
-      if (pointer.isVisible && hands.pinchState[hand][0] === 'start') {
+      if (pointer.isVisible && hands.pinchState[hand][0]) {
+        const event = eventMap[hands.pinchState[hand][0]]
         const $el = document.elementFromPoint(pointer.x, pointer.y)
         if ($el) {
           $el.dispatchEvent(
-            new MouseEvent('mousedown', {
-              bubbles: true,
-              cancelable: true,
-              clientX: pointer.x,
-              clientY: pointer.y
-            })
-          )
-        }
-      }
-
-      // Unclick
-      if (pointer.isVisible && hands.pinchState[hand][0] === 'released') {
-        const $el = document.elementFromPoint(pointer.x, pointer.y)
-        if ($el) {
-          $el.dispatchEvent(
-            new MouseEvent('mouseup', {
-              bubbles: true,
-              cancelable: true,
-              clientX: pointer.x,
-              clientY: pointer.y
-            })
-          )
-        }
-      }
-
-      // Held
-      if (pointer.isVisible && hands.pinchState[hand][0] === 'held') {
-        const $el = document.elementFromPoint(pointer.x, pointer.y)
-        if ($el) {
-          $el.dispatchEvent(
-            new MouseEvent('mousemove', {
+            new MouseEvent(event, {
               bubbles: true,
               cancelable: true,
               clientX: pointer.x,

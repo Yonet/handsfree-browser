@@ -13,7 +13,6 @@ handsfree.use('pinchClick', ({hands}) => {
 
   hands.pointer.forEach((pointer, hand) => {
     if (pointer.isVisible && hands.pinchState[hand][0] === 'start') {
-      console.log('CLICK')
       const $el = document.elementFromPoint(pointer.x, pointer.y)
       if ($el) {
         $el.dispatchEvent(
