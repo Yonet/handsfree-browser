@@ -48,7 +48,16 @@
       "matches": ["https://noisedeck.app/*"],
       "js": [
         "sites/noisedeck.app/noisedeck.app.js"
-      ]
+      ],
+      "all_frames": true,
+      "run_at": "document_end"
+    },
+
+    {
+      "matches": ["https://gacembed.withgoogle.com/blob-opera*"],
+      "js": ["sites/blob-opera/blob-opera.js"],
+      "all_frames": true,
+      "run_at": "document_end"
     }
   ],
 
