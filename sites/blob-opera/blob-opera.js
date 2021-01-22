@@ -18,8 +18,11 @@ handsfree.use('blobOpera', {
 
     hands.pointer.forEach((pointer, hand) => {
       if (pointer.isVisible && hands.pinchState[hand][0]) {
+        // Get the event and element to send events to
         const event = eventMap[hands.pinchState[hand][0]]
         const $el = document.elementFromPoint(pointer.x, pointer.y)
+        
+        // Dispatch the event
         if ($el) {
           $el.dispatchEvent(
             new MouseEvent(event, {
